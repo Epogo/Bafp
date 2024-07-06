@@ -26,10 +26,17 @@ public class SpeedMonitorService extends Service {
     private static final String CHANNEL_ID = "CHILD_SAFETY_CHANNEL";
     private LocationManager locationManager;
     private boolean notificationsEnabled = false;
+    private double minSpeed;
+    private long timer;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+
+        // Extract minSpeed and timer from the intent
+        minSpeed = intent.getDoubleExtra("minSpeed", 30); // Default to 30 km/h if not provided
+        timer = intent.getLongExtra("timer", 300000); // Default to 5 minutes (300000 ms) if not provided
+
         startMonitoringSpeed();
         return START_STICKY;
     }
@@ -39,7 +46,7 @@ public class SpeedMonitorService extends Service {
             @Override
             public void onLocationChanged(Location location) {
                 double speed = location.getSpeed() * 3.6; // Convert m/s to km/h
-                if (speed > 30 && notificationsEnabled) {
+                if (speed > minSpeed && notificationsEnabled) {
                     // Start a timer or mechanism to check if speed drops below a threshold
                     checkForStoppedCar();
                 }
@@ -89,11 +96,11 @@ public class SpeedMonitorService extends Service {
             public void run() {
                 // Add logic to get the current speed
                 float speed = 0; // Placeholder for actual speed fetching logic
-                if (speed < 5) { // Assuming 5 km/h as stationary
+                if (speed < 6) { // Assuming 5 km/h as stationary
                     triggerAlarm();
                 }
             }
-        }, 300000); // 5 minutes
+        }, timer); // Use the provided timer value
     }
 
     private void triggerAlarm() {
@@ -126,7 +133,6 @@ public class SpeedMonitorService extends Service {
             notificationManager.notify(1, notificationBuilder.build());
         }
     }
-
 
     @Override
     public IBinder onBind(Intent intent) {
