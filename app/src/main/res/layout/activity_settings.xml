@@ -10,16 +10,27 @@
         android:layout_height="wrap_content"
         android:text="Minimum Speed: "
         android:textSize="18sp"
-        android:layout_marginTop="16dp" />
+        android:layout_marginTop="16dp"
+        android:layout_alignParentStart="true" />
 
     <SeekBar
         android:id="@+id/minSpeedSeekBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:max="100"
-        android:progress="50"
+        android:max="35"
         android:layout_below="@id/minSpeedLabel"
-        android:layout_marginTop="8dp" />
+        android:layout_marginTop="8dp"
+        android:layout_alignParentStart="true"
+        android:layout_toStartOf="@+id/minSpeedValueTextView" />
+
+    <TextView
+        android:id="@+id/minSpeedValueTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/minSpeedSeekBar"
+        android:text="15"
+        android:layout_marginTop="8dp"
+        android:layout_alignParentEnd="true" />
 
     <TextView
         android:id="@+id/timerLimitLabel"
@@ -27,16 +38,36 @@
         android:layout_height="wrap_content"
         android:text="Timer Limit (minutes): "
         android:textSize="18sp"
-        android:layout_below="@id/minSpeedSeekBar"
-        android:layout_marginTop="16dp" />
+        android:layout_below="@id/minSpeedValueTextView"
+        android:layout_marginTop="16dp"
+        android:layout_alignParentStart="true" />
 
     <SeekBar
         android:id="@+id/timerLimitSeekBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:max="60"
-        android:progress="5"
+        android:max="9"
         android:layout_below="@id/timerLimitLabel"
-        android:layout_marginTop="8dp" />
+        android:layout_marginTop="8dp"
+        android:layout_alignParentStart="true"
+        android:layout_toStartOf="@+id/timerLimitValueTextView" />
+
+    <TextView
+        android:id="@+id/timerLimitValueTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/timerLimitSeekBar"
+        android:text="5"
+        android:layout_marginTop="8dp"
+        android:layout_alignParentEnd="true" />
+
+    <Button
+        android:id="@+id/setButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Set"
+        android:layout_below="@id/timerLimitSeekBar"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="24dp" />
 
 </RelativeLayout>

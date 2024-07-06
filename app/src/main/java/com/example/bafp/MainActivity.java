@@ -23,11 +23,15 @@ import androidx.core.content.ContextCompat;
 
 public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
+    private static final int SETTINGS_REQUEST_CODE = 2;
     private boolean isServiceRunning = false;
     private TextView speedTextView;
     private Button startStopButton;
+    private TextView settingsTextView;
     private LocationManager locationManager;
     private LocationListener locationListener;
+    private int minSpeed = 15; // Default min speed in km/h
+    private int timerLimit = 5; // Default timer limit in minutes
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +40,7 @@ public class MainActivity extends AppCompatActivity {
 
         speedTextView = findViewById(R.id.speedTextView);
         startStopButton = findViewById(R.id.startStopButton);
+        settingsTextView = findViewById(R.id.settingsTextView);
 
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
@@ -56,12 +61,14 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onLocationChanged(Location location) {
                 double speed = location.getSpeed() * 3.6; // Convert m/s to km/h
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        speedTextView.setText(String.format("Current Speed: %.2f km/h", speed));
-                    }
-                });
+                if (isServiceRunning) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            speedTextView.setText(String.format("Current Speed: %.2f km/h", speed));
+                        }
+                    });
+                }
             }
 
             @Override
@@ -78,6 +85,9 @@ public class MainActivity extends AppCompatActivity {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
         }
+
+        // Initialize with default values or saved settings
+        updateUI(minSpeed, timerLimit);
     }
 
     @Override
@@ -94,9 +104,11 @@ public class MainActivity extends AppCompatActivity {
         if (id == R.id.action_settings) {
             // Handle settings click
             Toast.makeText(this, "Settings clicked", Toast.LENGTH_SHORT).show();
-            // Start SettingsActivity
+            // Start SettingsActivity for result
             Intent intent = new Intent(this, SettingsActivity.class);
-            startActivity(intent);
+            intent.putExtra("MIN_SPEED", minSpeed);
+            intent.putExtra("TIMER_LIMIT", timerLimit);
+            startActivityForResult(intent, SETTINGS_REQUEST_CODE);
             return true;
         } else if (id == R.id.action_tutorial) {
             // Handle tutorial click
@@ -137,6 +149,28 @@ public class MainActivity extends AppCompatActivity {
 
     private void stopLocationUpdates() {
         locationManager.removeUpdates(locationListener);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == SETTINGS_REQUEST_CODE) {
+            if (resultCode == RESULT_OK && data != null) {
+                minSpeed = data.getIntExtra("MIN_SPEED", minSpeed);
+                timerLimit = data.getIntExtra("TIMER_LIMIT", timerLimit);
+
+                // Update UI with new settings
+                updateUI(minSpeed, timerLimit);
+            }
+        }
+    }
+
+    private void updateUI(int minSpeed, int timerLimit) {
+        // Update UI elements with new settings
+        // For example, update text views or other UI components
+        // Here's a placeholder for updating settingsTextView
+        settingsTextView.setText(String.format("Minimum Speed: %d km/h\nTimer Limit: %d minutes", minSpeed, timerLimit));
     }
 
     @Override

@@ -8,19 +8,29 @@
         android:id="@+id/speedTextView"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Current Speed: 0 km/h"
-        android:textSize="24sp"
+        android:text="Current Speed: "
+        android:textSize="18sp"
         android:layout_centerHorizontal="true"
-        android:layout_marginTop="50dp" />
+        android:layout_marginTop="16dp" />
 
     <Button
         android:id="@+id/startStopButton"
         android:layout_width="200dp"
         android:layout_height="200dp"
-        android:layout_centerInParent="true"
-        android:background="@drawable/round_button"
         android:text="Start"
-        android:textColor="@android:color/white"
-        android:textSize="24sp" />
+        android:background="@drawable/round_button"
+        android:layout_below="@id/speedTextView"
+        android:layout_marginTop="150dp"
+        android:layout_centerHorizontal="true"/>
+
+    <TextView
+        android:id="@+id/settingsTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Settings: "
+        android:textSize="18sp"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="20dp" />
 
 </RelativeLayout>
