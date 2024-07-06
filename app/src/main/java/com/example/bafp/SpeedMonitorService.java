@@ -106,6 +106,8 @@ public class SpeedMonitorService extends Service {
             int importance = NotificationManager.IMPORTANCE_HIGH;
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
             channel.setDescription(description);
+            channel.enableVibration(true); // Ensure vibration is enabled
+            channel.setVibrationPattern(new long[]{0, 1000, 500, 1000}); // Vibration pattern
             notificationManager.createNotificationChannel(channel);
         }
 
@@ -115,13 +117,16 @@ public class SpeedMonitorService extends Service {
                 .setContentText("Please check if any child is left in the car.")
                 .setSmallIcon(R.drawable.ic_notification)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setDefaults(NotificationCompat.DEFAULT_ALL);
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setVibrate(new long[]{0, 1000, 500, 1000}) // Vibration pattern
+                .setAutoCancel(true); // Auto-cancel the notification when clicked
 
         // Notify if notifications are enabled
         if (notificationsEnabled) {
             notificationManager.notify(1, notificationBuilder.build());
         }
     }
+
 
     @Override
     public IBinder onBind(Intent intent) {

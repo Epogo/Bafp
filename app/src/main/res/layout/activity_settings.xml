@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/minSpeedLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Minimum Speed: "
+        android:textSize="18sp"
+        android:layout_marginTop="16dp" />
+
+    <SeekBar
+        android:id="@+id/minSpeedSeekBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:progress="50"
+        android:layout_below="@id/minSpeedLabel"
+        android:layout_marginTop="8dp" />
+
+    <TextView
+        android:id="@+id/timerLimitLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Timer Limit (minutes): "
+        android:textSize="18sp"
+        android:layout_below="@id/minSpeedSeekBar"
+        android:layout_marginTop="16dp" />
+
+    <SeekBar
+        android:id="@+id/timerLimitSeekBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="60"
+        android:progress="5"
+        android:layout_below="@id/timerLimitLabel"
+        android:layout_marginTop="8dp" />
+
+</RelativeLayout>
