@@ -1,12 +1,15 @@
 package com.example.bafp;
 
 import android.Manifest;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -23,7 +26,10 @@ import androidx.core.content.ContextCompat;
 
 public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
-    private static final int SETTINGS_REQUEST_CODE = 2;
+    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 2;
+    private static final int SETTINGS_REQUEST_CODE = 3;
+    private static final String ACTION_REQUEST_PERMISSION = "com.example.bafp.REQUEST_PERMISSION";
+
     private boolean isServiceRunning = false;
     private TextView speedTextView;
     private Button startStopButton;
@@ -32,6 +38,15 @@ public class MainActivity extends AppCompatActivity {
     private LocationListener locationListener;
     private int minSpeed = 15; // Default min speed in km/h
     private int timerLimit = 5; // Default timer limit in minutes
+
+    private BroadcastReceiver permissionReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (ACTION_REQUEST_PERMISSION.equals(intent.getAction())) {
+                requestPostNotificationsPermission();
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,6 +101,10 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
         }
 
+        // Register the BroadcastReceiver
+        IntentFilter filter = new IntentFilter(ACTION_REQUEST_PERMISSION);
+        registerReceiver(permissionReceiver, filter);
+
         // Initialize with default values or saved settings
         updateUI(minSpeed, timerLimit);
     }
@@ -127,7 +146,11 @@ public class MainActivity extends AppCompatActivity {
         Intent intent = new Intent(this, SpeedMonitorService.class);
         intent.putExtra("minSpeed", minSpeed); // Pass the minimum speed
         intent.putExtra("timer", timerLimit); // Pass the timer value
-        startService(intent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ContextCompat.startForegroundService(this, intent);
+        } else {
+            startService(intent);
+        }
 
         startLocationUpdates();
     }
@@ -180,6 +203,15 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         stopLocationUpdates();
+        unregisterReceiver(permissionReceiver);
+    }
+
+    private void requestPostNotificationsPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST_CODE);
+            }
+        }
     }
 
     @Override
@@ -190,6 +222,13 @@ public class MainActivity extends AppCompatActivity {
                 startLocationUpdates();
             } else {
                 Toast.makeText(this, "Location permission denied", Toast.LENGTH_SHORT).show();
+            }
+        } else if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Permission granted, start the service again
+                startSpeedMonitorService();
+            } else {
+                Toast.makeText(this, "Notification permission denied", Toast.LENGTH_SHORT).show();
             }
         }
     }

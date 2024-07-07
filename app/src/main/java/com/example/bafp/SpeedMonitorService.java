@@ -10,6 +10,7 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -24,6 +25,7 @@ import androidx.core.content.ContextCompat;
 
 public class SpeedMonitorService extends Service {
     private static final String CHANNEL_ID = "CHILD_SAFETY_CHANNEL";
+    public static final String ACTION_REQUEST_PERMISSION = "com.example.bafp.REQUEST_PERMISSION";
     private LocationManager locationManager;
     private boolean notificationsEnabled = false;
     private double minSpeed;
@@ -37,8 +39,33 @@ public class SpeedMonitorService extends Service {
         minSpeed = intent.getDoubleExtra("minSpeed", 30); // Default to 30 km/h if not provided
         timer = intent.getLongExtra("timer", 300000); // Default to 5 minutes (300000 ms) if not provided
 
-        startMonitoringSpeed();
+        if (checkLocationPermission() && checkNotificationPermission()) {
+            startMonitoringSpeed();
+        } else {
+            stopSelf();
+        }
         return START_STICKY;
+    }
+
+    private boolean checkLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Location permission not granted", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+        return true;
+    }
+
+    private boolean checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                // Request POST_NOTIFICATIONS permission if not granted
+                Intent requestPermissionIntent = new Intent(ACTION_REQUEST_PERMISSION);
+                sendBroadcast(requestPermissionIntent);
+                return false;
+            }
+        }
+        notificationsEnabled = true;
+        return true;
     }
 
     private void startMonitoringSpeed() {
@@ -62,32 +89,11 @@ public class SpeedMonitorService extends Service {
             public void onProviderDisabled(String provider) {}
         };
 
-        // Check for ACCESS_FINE_LOCATION permission
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+        try {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locationListener);
-        } else {
-            // Handle case where permission is not granted
+        } catch (SecurityException e) {
             Toast.makeText(this, "Location permission not granted", Toast.LENGTH_SHORT).show();
-            stopSelf();
-            return;
         }
-
-        // Check for POST_NOTIFICATIONS permission
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            notificationsEnabled = true;
-        } else {
-            // Request POST_NOTIFICATIONS permission if not granted
-            requestPostNotificationsPermission();
-        }
-    }
-
-    private void requestPostNotificationsPermission() {
-        // Implement proper permission request flow here
-        // This is a simplified example using Toast for demonstration
-        Toast.makeText(this, "Requesting POST_NOTIFICATIONS permission", Toast.LENGTH_SHORT).show();
-        // You should implement a proper permission request flow (e.g., using ActivityCompat.requestPermissions())
-        // Example:
-        // ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, PERMISSION_REQUEST_CODE);
     }
 
     private void checkForStoppedCar() {
@@ -118,6 +124,8 @@ public class SpeedMonitorService extends Service {
             notificationManager.createNotificationChannel(channel);
         }
 
+        Uri soundUri = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.alert_sound);
+
         // Build the notification
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Check the Car")
@@ -125,12 +133,18 @@ public class SpeedMonitorService extends Service {
                 .setSmallIcon(R.drawable.ic_notification)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
-                .setVibrate(new long[]{0, 1000, 500, 1000}) // Vibration pattern
+                .setVibrate(new long[]{0, 1000, 500, 1000, 500, 10000}) // Vibration pattern
+                .setSound(soundUri) // Set the custom sound
                 .setAutoCancel(true); // Auto-cancel the notification when clicked
 
         // Notify if notifications are enabled
-        if (notificationsEnabled) {
-            notificationManager.notify(1, notificationBuilder.build());
+        try {
+            if (notificationsEnabled) {
+                NotificationManagerCompat notificationManagerCompat = NotificationManagerCompat.from(this);
+                notificationManagerCompat.notify(1, notificationBuilder.build());
+            }
+        } catch (SecurityException e) {
+            Toast.makeText(this, "Notification permission not granted", Toast.LENGTH_SHORT).show();
         }
     }
 
