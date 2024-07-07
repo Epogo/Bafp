@@ -46,7 +46,7 @@ public class SpeedMonitorService extends Service {
         timer = intent.getLongExtra("timer", 300000); // Default to 5 minutes (300000 ms) if not provided
 
         if (checkLocationPermission() && checkNotificationPermission()) {
-            startMonitoringSpeed();triggerAlarm();
+            startMonitoringSpeed();
         } else {
             stopSelf();
         }
