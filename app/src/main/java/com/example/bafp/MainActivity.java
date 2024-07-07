@@ -145,7 +145,7 @@ public class MainActivity extends AppCompatActivity {
     private void startSpeedMonitorService() {
         Intent intent = new Intent(this, SpeedMonitorService.class);
         intent.putExtra("minSpeed", minSpeed); // Pass the minimum speed
-        intent.putExtra("timer", timerLimit); // Pass the timer value
+        intent.putExtra("timer", timerLimit * 60000L); // Pass the timer value in milliseconds
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             ContextCompat.startForegroundService(this, intent);
         } else {

@@ -3,6 +3,7 @@ package com.example.bafp;
 import android.Manifest;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -16,31 +17,36 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.util.Log;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
-import androidx.core.content.ContextCompat;
 
 public class SpeedMonitorService extends Service {
-    private static final String CHANNEL_ID = "CHILD_SAFETY_CHANNEL";
-    public static final String ACTION_REQUEST_PERMISSION = "com.example.bafp.REQUEST_PERMISSION";
+
+    private static final String CHANNEL_ID = "ChildSafetyChannel";
     private LocationManager locationManager;
     private boolean notificationsEnabled = false;
     private double minSpeed;
     private long timer;
+    private Vibrator vibrator;
+    private boolean isAlarmActive = false;
+    private LocationListener locationListener;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
         // Extract minSpeed and timer from the intent
         minSpeed = intent.getDoubleExtra("minSpeed", 30); // Default to 30 km/h if not provided
         timer = intent.getLongExtra("timer", 300000); // Default to 5 minutes (300000 ms) if not provided
 
         if (checkLocationPermission() && checkNotificationPermission()) {
-            startMonitoringSpeed();
+            startMonitoringSpeed();triggerAlarm();
         } else {
             stopSelf();
         }
@@ -48,7 +54,7 @@ public class SpeedMonitorService extends Service {
     }
 
     private boolean checkLocationPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "Location permission not granted", Toast.LENGTH_SHORT).show();
             return false;
         }
@@ -56,11 +62,9 @@ public class SpeedMonitorService extends Service {
     }
 
     private boolean checkNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                // Request POST_NOTIFICATIONS permission if not granted
-                Intent requestPermissionIntent = new Intent(ACTION_REQUEST_PERMISSION);
-                sendBroadcast(requestPermissionIntent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Notification permission not granted", Toast.LENGTH_SHORT).show();
                 return false;
             }
         }
@@ -69,12 +73,14 @@ public class SpeedMonitorService extends Service {
     }
 
     private void startMonitoringSpeed() {
-        LocationListener locationListener = new LocationListener() {
+        locationListener = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
-                double speed = location.getSpeed() * 3.6; // Convert m/s to km/h
-                if (speed > minSpeed && notificationsEnabled) {
-                    // Start a timer or mechanism to check if speed drops below a threshold
+                if (location.getSpeed() * 3.6 > minSpeed) {
+                    // Speed exceeds minSpeed, stop monitoring
+                    stopMonitoringSpeed();
+                } else {
+                    // Start a timer to check when speed drops below minSpeed
                     checkForStoppedCar();
                 }
             }
@@ -92,7 +98,7 @@ public class SpeedMonitorService extends Service {
         try {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locationListener);
         } catch (SecurityException e) {
-            Toast.makeText(this, "Location permission not granted", Toast.LENGTH_SHORT).show();
+            Log.e("SpeedMonitorService", "Location permission not granted");
         }
     }
 
@@ -100,16 +106,64 @@ public class SpeedMonitorService extends Service {
         new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
             @Override
             public void run() {
-                // Add logic to get the current speed
-                float speed = 0; // Placeholder for actual speed fetching logic
-                if (speed < 6) { // Assuming 5 km/h as stationary
-                    triggerAlarm();
+                try {
+                    Location lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                    if (lastKnownLocation != null && lastKnownLocation.getSpeed() * 3.6 < minSpeed) {
+                        triggerAlarm();
+                    } else {
+                        // Continue checking if speed drops below minSpeed
+                        checkForStoppedCar();
+                    }
+                } catch (SecurityException e) {
+                    Log.e("SpeedMonitorService", "Location permission not granted");
                 }
             }
         }, timer); // Use the provided timer value
     }
 
     private void triggerAlarm() {
+        if (isAlarmActive) {
+            return; // Only trigger the alarm once
+        }
+        isAlarmActive = true;
+
+        // Launch PopUpAlertActivity
+        Intent popupIntent = new Intent(this, PopUpAlertActivity.class);
+        popupIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(popupIntent);
+
+        // Vibrate indefinitely until the user interacts with the popup
+        startVibrations();
+
+        // Show notification if notifications are enabled
+        showNotification();
+    }
+
+    private void startVibrations() {
+        // Vibration pattern (0ms delay, 1s vibration)
+        long[] pattern = {0, 1000};
+
+        // Check API level for compatibility
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Use vibration effect for API level 26+
+            vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0));
+        } else {
+            // Fallback for older API levels
+            vibrator.vibrate(pattern, 0);
+        }
+    }
+
+    private void stopMonitoringSpeed() {
+        locationManager.removeUpdates(locationListener);
+        stopVibrations();
+        stopSelf();
+    }
+
+    private void stopVibrations() {
+        vibrator.cancel();
+    }
+
+    private void showNotification() {
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -128,7 +182,7 @@ public class SpeedMonitorService extends Service {
 
         // Build the notification
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Check the Car")
+                .setContentTitle("Child Left in Car")
                 .setContentText("Please check if any child is left in the car.")
                 .setSmallIcon(R.drawable.ic_notification)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -140,8 +194,8 @@ public class SpeedMonitorService extends Service {
         // Notify if notifications are enabled
         try {
             if (notificationsEnabled) {
-                NotificationManagerCompat notificationManagerCompat = NotificationManagerCompat.from(this);
-                notificationManagerCompat.notify(1, notificationBuilder.build());
+                notificationManager.notify(1, notificationBuilder.build());
+                startVibrations();
             }
         } catch (SecurityException e) {
             Toast.makeText(this, "Notification permission not granted", Toast.LENGTH_SHORT).show();
@@ -153,3 +207,6 @@ public class SpeedMonitorService extends Service {
         return null;
     }
 }
+
+
+
