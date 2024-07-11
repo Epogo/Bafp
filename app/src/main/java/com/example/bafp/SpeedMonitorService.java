@@ -1,9 +1,9 @@
 package com.example.bafp;
 
 import android.Manifest;
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -45,6 +45,9 @@ public class SpeedMonitorService extends Service {
         minSpeed = intent.getDoubleExtra("minSpeed", 30); // Default to 30 km/h if not provided
         timer = intent.getLongExtra("timer", 300000); // Default to 5 minutes (300000 ms) if not provided
 
+        createNotificationChannel();
+        startForeground(1, createNotification());
+
         if (checkLocationPermission() && checkNotificationPermission()) {
             startMonitoringSpeed();
         } else {
@@ -62,7 +65,7 @@ public class SpeedMonitorService extends Service {
     }
 
     private boolean checkNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "Notification permission not granted", Toast.LENGTH_SHORT).show();
                 return false;
@@ -202,11 +205,31 @@ public class SpeedMonitorService extends Service {
         }
     }
 
+    private Notification createNotification() {
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("Speed Monitor Service")
+                .setContentText("Monitoring vehicle speed...")
+                .setSmallIcon(R.drawable.ic_notification)
+                .setPriority(NotificationCompat.PRIORITY_LOW);
+
+        return builder.build();
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = "Child Safety Notifications";
+            String description = "Notifications for child safety reminders";
+            int importance = NotificationManager.IMPORTANCE_LOW;
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
     }
 }
-
-
-
