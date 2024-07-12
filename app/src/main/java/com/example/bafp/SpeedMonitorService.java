@@ -11,35 +11,37 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.os.VibrationEffect;
-import android.os.Vibrator;
 import android.util.Log;
 import android.widget.Toast;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
-
 public class SpeedMonitorService extends Service {
-
     private static final String CHANNEL_ID = "ChildSafetyChannel";
     private LocationManager locationManager;
     private boolean notificationsEnabled = false;
     private double minSpeed;
     private long timer;
-    private Vibrator vibrator;
     private boolean isAlarmActive = false;
     private LocationListener locationListener;
+    private MediaPlayer mediaPlayer;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && "STOP_ALARM".equals(intent.getAction())) {
+            stopAlarmSound();
+            isAlarmActive = false;
+            return START_NOT_STICKY;
+        }
+
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
         // Extract minSpeed and timer from the intent
         minSpeed = intent.getDoubleExtra("minSpeed", 30); // Default to 30 km/h if not provided
@@ -53,6 +55,7 @@ public class SpeedMonitorService extends Service {
         } else {
             stopSelf();
         }
+
         return START_STICKY;
     }
 
@@ -135,35 +138,31 @@ public class SpeedMonitorService extends Service {
         popupIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(popupIntent);
 
-        // Vibrate indefinitely until the user interacts with the popup
-        startVibrations();
+        // Play MP3 file
+        playAlarmSound();
 
         // Show notification if notifications are enabled
         showNotification();
     }
 
-    private void startVibrations() {
-        // Vibration pattern (0ms delay, 1s vibration)
-        long[] pattern = {0, 1000};
+    private void playAlarmSound() {
+        mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
+        mediaPlayer.setLooping(true);
+        mediaPlayer.start();
+    }
 
-        // Check API level for compatibility
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Use vibration effect for API level 26+
-            vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0));
-        } else {
-            // Fallback for older API levels
-            vibrator.vibrate(pattern, 0);
+    private void stopAlarmSound() {
+        if (mediaPlayer != null) {
+            mediaPlayer.stop();
+            mediaPlayer.release();
+            mediaPlayer = null;
         }
     }
 
     private void stopMonitoringSpeed() {
         locationManager.removeUpdates(locationListener);
-        stopVibrations();
+        stopAlarmSound();
         stopSelf();
-    }
-
-    private void stopVibrations() {
-        vibrator.cancel();
     }
 
     private void showNotification() {
@@ -176,8 +175,6 @@ public class SpeedMonitorService extends Service {
             int importance = NotificationManager.IMPORTANCE_HIGH;
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
             channel.setDescription(description);
-            channel.enableVibration(true); // Ensure vibration is enabled
-            channel.setVibrationPattern(new long[]{0, 1000, 500, 1000}); // Vibration pattern
             notificationManager.createNotificationChannel(channel);
         }
 
@@ -190,7 +187,6 @@ public class SpeedMonitorService extends Service {
                 .setSmallIcon(R.drawable.ic_notification)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
-                .setVibrate(new long[]{0, 1000, 500, 1000, 500, 10000}) // Vibration pattern
                 .setSound(soundUri) // Set the custom sound
                 .setAutoCancel(true); // Auto-cancel the notification when clicked
 
@@ -198,7 +194,6 @@ public class SpeedMonitorService extends Service {
         try {
             if (notificationsEnabled) {
                 notificationManager.notify(1, notificationBuilder.build());
-                startVibrations();
             }
         } catch (SecurityException e) {
             Toast.makeText(this, "Notification permission not granted", Toast.LENGTH_SHORT).show();
@@ -231,5 +226,11 @@ public class SpeedMonitorService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        stopAlarmSound();
     }
 }
