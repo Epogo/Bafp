@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
@@ -14,10 +15,9 @@ import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.View;
-import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.ToggleButton;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -29,13 +29,15 @@ public class MainActivity extends AppCompatActivity {
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 2;
     private static final int SETTINGS_REQUEST_CODE = 3;
     private static final String ACTION_REQUEST_PERMISSION = "com.example.bafp.REQUEST_PERMISSION";
+    private static final String PREFS_NAME = "com.example.bafp.PREFS";
+    private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
 
-    private boolean isServiceRunning = false;
     private TextView speedTextView;
-    private Button startStopButton;
     private TextView settingsTextView;
+    private ToggleButton monitoringToggleButton;
     private LocationManager locationManager;
     private LocationListener locationListener;
+    private SharedPreferences sharedPreferences;
     private int minSpeed = 15; // Default min speed in km/h
     private int timerLimit = 5; // Default timer limit in minutes
 
@@ -54,21 +56,24 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         speedTextView = findViewById(R.id.speedTextView);
-        startStopButton = findViewById(R.id.startStopButton);
         settingsTextView = findViewById(R.id.settingsTextView);
+        monitoringToggleButton = findViewById(R.id.monitoringToggleButton);
 
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
-        startStopButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (isServiceRunning) {
-                    stopSpeedMonitorService();
-                } else {
-                    startSpeedMonitorService();
-                }
-                isServiceRunning = !isServiceRunning;
-                startStopButton.setText(isServiceRunning ? "Stop" : "Start");
+        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
+        monitoringToggleButton.setChecked(isMonitoringEnabled);
+
+        monitoringToggleButton.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            SharedPreferences.Editor editor = sharedPreferences.edit();
+            editor.putBoolean(KEY_MONITORING_TOGGLE, isChecked);
+            editor.apply();
+
+            if (isChecked) {
+                startSpeedMonitorService();
+            } else {
+                stopSpeedMonitorService();
             }
         });
 
@@ -76,14 +81,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onLocationChanged(Location location) {
                 double speed = location.getSpeed() * 3.6; // Convert m/s to km/h
-                if (isServiceRunning) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            speedTextView.setText(String.format("Current Speed: %.2f km/h", speed));
-                        }
-                    });
-                }
+                runOnUiThread(() -> speedTextView.setText(String.format("Current Speed: %.2f km/h", speed)));
             }
 
             @Override
@@ -99,6 +97,10 @@ public class MainActivity extends AppCompatActivity {
         // Check for location permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+        } else {
+            if (isMonitoringEnabled) {
+                startSpeedMonitorService();
+            }
         }
 
         // Register the BroadcastReceiver
@@ -121,20 +123,15 @@ public class MainActivity extends AppCompatActivity {
         int id = item.getItemId();
 
         if (id == R.id.action_settings) {
-            // Handle settings click
-            Toast.makeText(this, "Settings clicked", Toast.LENGTH_SHORT).show();
-            // Start SettingsActivity for result
             Intent intent = new Intent(this, SettingsActivity.class);
             intent.putExtra("MIN_SPEED", minSpeed);
             intent.putExtra("TIMER_LIMIT", timerLimit);
             startActivityForResult(intent, SETTINGS_REQUEST_CODE);
             return true;
         } else if (id == R.id.action_tutorial) {
-            // Handle tutorial click
             Toast.makeText(this, "Tutorial clicked", Toast.LENGTH_SHORT).show();
             return true;
         } else if (id == R.id.action_about) {
-            // Handle about click
             Toast.makeText(this, "About clicked", Toast.LENGTH_SHORT).show();
             return true;
         } else {
@@ -144,8 +141,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void startSpeedMonitorService() {
         Intent intent = new Intent(this, SpeedMonitorService.class);
-        intent.putExtra("minSpeed", minSpeed); // Pass the minimum speed
-        intent.putExtra("timer", timerLimit * 60000L); // Pass the timer value in milliseconds
+        intent.putExtra("minSpeed", minSpeed);
+        intent.putExtra("timer", timerLimit * 60000L);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             ContextCompat.startForegroundService(this, intent);
         } else {
@@ -156,54 +153,53 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void stopSpeedMonitorService() {
-        Intent intent = new Intent(this, SpeedMonitorService.class);
-        stopService(intent);
-        stopLocationUpdates();
+        stopService(new Intent(this, SpeedMonitorService.class));
     }
 
     private void startLocationUpdates() {
         try {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0f, locationListener);
-            } else {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
             }
         } catch (SecurityException e) {
             e.printStackTrace();
         }
     }
 
-    private void stopLocationUpdates() {
-        locationManager.removeUpdates(locationListener);
-    }
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        if (requestCode == SETTINGS_REQUEST_CODE) {
-            if (resultCode == RESULT_OK && data != null) {
-                minSpeed = data.getIntExtra("MIN_SPEED", minSpeed);
-                timerLimit = data.getIntExtra("TIMER_LIMIT", timerLimit);
+        if (requestCode == SETTINGS_REQUEST_CODE && resultCode == RESULT_OK && data != null) {
+            minSpeed = data.getIntExtra("MIN_SPEED", minSpeed);
+            timerLimit = data.getIntExtra("TIMER_LIMIT", timerLimit);
+            updateUI(minSpeed, timerLimit);
 
-                // Update UI with new settings
-                updateUI(minSpeed, timerLimit);
+            // Restart the service with new settings
+            stopSpeedMonitorService();
+            if (monitoringToggleButton.isChecked()) {
+                startSpeedMonitorService();
             }
         }
     }
 
     private void updateUI(int minSpeed, int timerLimit) {
-        // Update UI elements with new settings
-        // For example, update text views or other UI components
-        // Here's a placeholder for updating settingsTextView
         settingsTextView.setText(String.format("Minimum Speed: %d km/h\nTimer Limit: %d minutes", minSpeed, timerLimit));
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        stopLocationUpdates();
+        // Stop location updates
+        locationManager.removeUpdates(locationListener);
+        // Unregister the BroadcastReceiver
         unregisterReceiver(permissionReceiver);
+
+        // Check the toggle state before stopping the service
+        if (!sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true)) {
+            // Stop the SpeedMonitorService
+            stopSpeedMonitorService();
+        }
     }
 
     private void requestPostNotificationsPermission() {
@@ -219,14 +215,17 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startLocationUpdates();
+                if (monitoringToggleButton.isChecked()) {
+                    startSpeedMonitorService();
+                }
             } else {
                 Toast.makeText(this, "Location permission denied", Toast.LENGTH_SHORT).show();
             }
         } else if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission granted, start the service again
-                startSpeedMonitorService();
+                if (monitoringToggleButton.isChecked()) {
+                    startSpeedMonitorService();
+                }
             } else {
                 Toast.makeText(this, "Notification permission denied", Toast.LENGTH_SHORT).show();
             }

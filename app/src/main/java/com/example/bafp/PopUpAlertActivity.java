@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -21,7 +22,7 @@ public class PopUpAlertActivity extends AppCompatActivity {
         okButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                // Stop the alarm sound
+                // Stop the alarm sound and reset monitoring
                 Intent intent = new Intent(PopUpAlertActivity.this, SpeedMonitorService.class);
                 intent.setAction("STOP_ALARM");
                 startService(intent);
@@ -34,11 +35,8 @@ public class PopUpAlertActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        // Call the super method
         super.onBackPressed();
-
         // Prevent closing the activity
-        // You can show a toast or dialog here to inform the user
-        // that they need to press the OK button
+        Toast.makeText(this, "Please press the OK button to dismiss the alarm", Toast.LENGTH_SHORT).show();
     }
 }

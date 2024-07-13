@@ -1,9 +1,11 @@
 package com.example.bafp;
 
 import android.Manifest;
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -18,11 +20,13 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.widget.Toast;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
+
 public class SpeedMonitorService extends Service {
     private static final String CHANNEL_ID = "ChildSafetyChannel";
     private LocationManager locationManager;
@@ -32,12 +36,22 @@ public class SpeedMonitorService extends Service {
     private boolean isAlarmActive = false;
     private LocationListener locationListener;
     private MediaPlayer mediaPlayer;
+    private Handler handler;
+    private Runnable checkSpeedRunnable;
+
+    private boolean hasMovedAboveThreshold = false;
+    private long lastBelowThresholdTime = 0;
+    private long totalTimeBelowThreshold = 0;
+
+    private static final int NOTIFICATION_ID = 1;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        startForeground(NOTIFICATION_ID, createNotification());
         if (intent != null && "STOP_ALARM".equals(intent.getAction())) {
             stopAlarmSound();
             isAlarmActive = false;
+            resetMonitoring();
             return START_NOT_STICKY;
         }
 
@@ -45,7 +59,7 @@ public class SpeedMonitorService extends Service {
 
         // Extract minSpeed and timer from the intent
         minSpeed = intent.getDoubleExtra("minSpeed", 30); // Default to 30 km/h if not provided
-        timer = intent.getLongExtra("timer", 300000); // Default to 5 minutes (300000 ms) if not provided
+        timer = intent.getLongExtra("timer", 180000); // Default to 3 minutes (180000 ms) if not provided
 
         createNotificationChannel();
         startForeground(1, createNotification());
@@ -79,15 +93,37 @@ public class SpeedMonitorService extends Service {
     }
 
     private void startMonitoringSpeed() {
+        handler = new Handler(Looper.getMainLooper());
+        checkSpeedRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (hasMovedAboveThreshold && !isAlarmActive && totalTimeBelowThreshold >= timer) {
+                    triggerAlarm();
+                } else {
+                    handler.postDelayed(this, 1000);
+                }
+            }
+        };
+
         locationListener = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
-                if (location.getSpeed() * 3.6 > minSpeed) {
-                    // Speed exceeds minSpeed, stop monitoring
-                    stopMonitoringSpeed();
-                } else {
-                    // Start a timer to check when speed drops below minSpeed
-                    checkForStoppedCar();
+                double speedKmh = location.getSpeed() * 3.6; // Convert m/s to km/h
+                long currentTime = System.currentTimeMillis();
+
+                if (speedKmh > minSpeed) {
+                    hasMovedAboveThreshold = true;
+                    if (lastBelowThresholdTime != 0) {
+                        totalTimeBelowThreshold += (currentTime - lastBelowThresholdTime);
+                        lastBelowThresholdTime = 0;
+                    }
+                } else if (hasMovedAboveThreshold) {
+                    if (lastBelowThresholdTime == 0) {
+                        lastBelowThresholdTime = currentTime;
+                    } else {
+                        totalTimeBelowThreshold += (currentTime - lastBelowThresholdTime);
+                        lastBelowThresholdTime = currentTime;
+                    }
                 }
             }
 
@@ -106,25 +142,8 @@ public class SpeedMonitorService extends Service {
         } catch (SecurityException e) {
             Log.e("SpeedMonitorService", "Location permission not granted");
         }
-    }
 
-    private void checkForStoppedCar() {
-        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Location lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                    if (lastKnownLocation != null && lastKnownLocation.getSpeed() * 3.6 < minSpeed) {
-                        triggerAlarm();
-                    } else {
-                        // Continue checking if speed drops below minSpeed
-                        checkForStoppedCar();
-                    }
-                } catch (SecurityException e) {
-                    Log.e("SpeedMonitorService", "Location permission not granted");
-                }
-            }
-        }, timer); // Use the provided timer value
+        handler.postDelayed(checkSpeedRunnable, 1000);
     }
 
     private void triggerAlarm() {
@@ -160,9 +179,23 @@ public class SpeedMonitorService extends Service {
     }
 
     private void stopMonitoringSpeed() {
-        locationManager.removeUpdates(locationListener);
+        if (locationListener != null) {
+            locationManager.removeUpdates(locationListener);
+        }
+        if (handler != null && checkSpeedRunnable != null) {
+            handler.removeCallbacks(checkSpeedRunnable);
+        }
         stopAlarmSound();
         stopSelf();
+    }
+
+    private void resetMonitoring() {
+        hasMovedAboveThreshold = false;
+        lastBelowThresholdTime = 0;
+        totalTimeBelowThreshold = 0;
+        isAlarmActive = false;
+        handler.removeCallbacks(checkSpeedRunnable);
+        handler.postDelayed(checkSpeedRunnable, 1000);
     }
 
     private void showNotification() {
@@ -221,6 +254,17 @@ public class SpeedMonitorService extends Service {
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             notificationManager.createNotificationChannel(channel);
         }
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
+        restartServiceIntent.setPackage(getPackageName());
+        PendingIntent restartServicePendingIntent = PendingIntent.getService(
+                getApplicationContext(), 1, restartServiceIntent, PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
+        AlarmManager alarmService = (AlarmManager) getApplicationContext().getSystemService(Context.ALARM_SERVICE);
+        alarmService.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + 1000, restartServicePendingIntent);
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override

@@ -13,15 +13,14 @@
         android:layout_centerHorizontal="true"
         android:layout_marginTop="16dp" />
 
-    <Button
-        android:id="@+id/startStopButton"
-        android:layout_width="200dp"
-        android:layout_height="200dp"
-        android:text="Start"
-        android:background="@drawable/round_button"
-        android:layout_below="@id/speedTextView"
-        android:layout_marginTop="150dp"
-        android:layout_centerHorizontal="true"/>
+    <ToggleButton
+        android:id="@+id/monitoringToggleButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textOn="Monitoring ON"
+        android:textOff="Monitoring OFF"
+        android:checked="true"
+        android:layout_centerInParent="true"/>
 
     <TextView
         android:id="@+id/settingsTextView"
