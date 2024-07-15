@@ -61,7 +61,10 @@ public class MainActivity extends AppCompatActivity {
 
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
-        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        SharedPreferences sharedPreferences = getSharedPreferences("BafpPrefs", MODE_PRIVATE);
+        minSpeed = sharedPreferences.getInt("min_speed", 15);
+        timerLimit = sharedPreferences.getInt("timer_limit", 5);
+        updateUI(minSpeed, timerLimit);
         boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
         monitoringToggleButton.setChecked(isMonitoringEnabled);
 
@@ -208,6 +211,12 @@ public class MainActivity extends AppCompatActivity {
         if (!sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true)) {
             // Stop the SpeedMonitorService
             stopSpeedMonitorService();
+        }
+    }
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent != null && "ALERT_DISMISSED".equals(intent.getAction())) {
+            onPopUpAlertDismissed();
         }
     }
 

@@ -142,14 +142,14 @@ public class SpeedMonitorService extends Service {
 
         // Launch PopUpAlertActivity
         Intent popupIntent = new Intent(this, PopUpAlertActivity.class);
-        popupIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(popupIntent);
+        popupIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, popupIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        // Show notification
+        showNotification(pendingIntent);
 
         // Play MP3 file
         playAlarmSound();
-
-        // Show notification if notifications are enabled
-        showNotification();
     }
 
     private void playAlarmSound() {
@@ -188,37 +188,27 @@ public class SpeedMonitorService extends Service {
         }
     }
 
-    private void showNotification() {
+    private void showNotification(PendingIntent contentIntent) {
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "Child Safety Notifications";
-            String description = "Notifications for child safety reminders";
-            int importance = NotificationManager.IMPORTANCE_HIGH;
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
-            channel.setDescription(description);
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Child Safety Alerts", NotificationManager.IMPORTANCE_HIGH);
+            channel.setDescription("Alerts for child safety");
+            channel.enableLights(true);
+            channel.enableVibration(true);
             notificationManager.createNotificationChannel(channel);
         }
 
-        Uri soundUri = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.alert_sound);
-
-        Intent stopIntent = new Intent(this, SpeedMonitorService.class);
-        stopIntent.setAction("STOP_ALARM");
-        PendingIntent stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
-        NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Child Left in Car")
-                .setContentText("Please check if any child is left in the car.")
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setDefaults(NotificationCompat.DEFAULT_ALL)
-                .setSound(soundUri)
-                .setAutoCancel(true)
-                .addAction(R.drawable.ic_stop, "Stop Alarm", stopPendingIntent);
+                .setContentTitle("Child Safety Alert")
+                .setContentText("Vehicle has stopped. Check on your child!")
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setFullScreenIntent(contentIntent, true)
+                .setAutoCancel(true);
 
-        if (notificationsEnabled) {
-            notificationManager.notify(NOTIFICATION_ID, notificationBuilder.build());
-        }
+        notificationManager.notify(NOTIFICATION_ID, builder.build());
     }
 
     private Notification createNotification() {
