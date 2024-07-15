@@ -27,6 +27,12 @@ public class PopUpAlertActivity extends AppCompatActivity {
                 intent.setAction("STOP_ALARM");
                 startService(intent);
 
+                // Notify MainActivity that the alert has been dismissed
+                Intent mainActivityIntent = new Intent(PopUpAlertActivity.this, MainActivity.class);
+                mainActivityIntent.setAction("ALERT_DISMISSED");
+                mainActivityIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                startActivity(mainActivityIntent);
+
                 // Close the activity
                 finish();
             }
@@ -35,7 +41,6 @@ public class PopUpAlertActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        super.onBackPressed();
         // Prevent closing the activity
         Toast.makeText(this, "Please press the OK button to dismiss the alarm", Toast.LENGTH_SHORT).show();
     }

@@ -47,7 +47,6 @@ public class SpeedMonitorService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        startForeground(NOTIFICATION_ID, createNotification());
         if (intent != null && "STOP_ALARM".equals(intent.getAction())) {
             stopAlarmSound();
             isAlarmActive = false;
@@ -57,12 +56,11 @@ public class SpeedMonitorService extends Service {
 
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
-        // Extract minSpeed and timer from the intent
         minSpeed = intent.getDoubleExtra("minSpeed", 30); // Default to 30 km/h if not provided
         timer = intent.getLongExtra("timer", 180000); // Default to 3 minutes (180000 ms) if not provided
 
         createNotificationChannel();
-        startForeground(1, createNotification());
+        startForeground(NOTIFICATION_ID, createNotification());
 
         if (checkLocationPermission() && checkNotificationPermission()) {
             startMonitoringSpeed();
@@ -94,16 +92,6 @@ public class SpeedMonitorService extends Service {
 
     private void startMonitoringSpeed() {
         handler = new Handler(Looper.getMainLooper());
-        checkSpeedRunnable = new Runnable() {
-            @Override
-            public void run() {
-                if (hasMovedAboveThreshold && !isAlarmActive && totalTimeBelowThreshold >= timer) {
-                    triggerAlarm();
-                } else {
-                    handler.postDelayed(this, 1000);
-                }
-            }
-        };
 
         locationListener = new LocationListener() {
             @Override
@@ -113,17 +101,19 @@ public class SpeedMonitorService extends Service {
 
                 if (speedKmh > minSpeed) {
                     hasMovedAboveThreshold = true;
-                    if (lastBelowThresholdTime != 0) {
-                        totalTimeBelowThreshold += (currentTime - lastBelowThresholdTime);
-                        lastBelowThresholdTime = 0;
-                    }
+                    totalTimeBelowThreshold = 0;
+                    lastBelowThresholdTime = 0;
                 } else if (hasMovedAboveThreshold) {
                     if (lastBelowThresholdTime == 0) {
                         lastBelowThresholdTime = currentTime;
                     } else {
-                        totalTimeBelowThreshold += (currentTime - lastBelowThresholdTime);
-                        lastBelowThresholdTime = currentTime;
+                        totalTimeBelowThreshold = currentTime - lastBelowThresholdTime;
                     }
+                }
+
+                // Check if we should trigger the alarm
+                if (hasMovedAboveThreshold && !isAlarmActive && totalTimeBelowThreshold >= timer) {
+                    triggerAlarm();
                 }
             }
 
@@ -142,8 +132,6 @@ public class SpeedMonitorService extends Service {
         } catch (SecurityException e) {
             Log.e("SpeedMonitorService", "Location permission not granted");
         }
-
-        handler.postDelayed(checkSpeedRunnable, 1000);
     }
 
     private void triggerAlarm() {
@@ -194,15 +182,16 @@ public class SpeedMonitorService extends Service {
         lastBelowThresholdTime = 0;
         totalTimeBelowThreshold = 0;
         isAlarmActive = false;
-        handler.removeCallbacks(checkSpeedRunnable);
-        handler.postDelayed(checkSpeedRunnable, 1000);
+        if (handler != null && checkSpeedRunnable != null) {
+            handler.removeCallbacks(checkSpeedRunnable);
+            handler.postDelayed(checkSpeedRunnable, 1000);
+        }
     }
 
     private void showNotification() {
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Create the NotificationChannel
             CharSequence name = "Child Safety Notifications";
             String description = "Notifications for child safety reminders";
             int importance = NotificationManager.IMPORTANCE_HIGH;
@@ -213,23 +202,22 @@ public class SpeedMonitorService extends Service {
 
         Uri soundUri = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.alert_sound);
 
-        // Build the notification
+        Intent stopIntent = new Intent(this, SpeedMonitorService.class);
+        stopIntent.setAction("STOP_ALARM");
+        PendingIntent stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Child Left in Car")
                 .setContentText("Please check if any child is left in the car.")
                 .setSmallIcon(R.drawable.ic_notification)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
-                .setSound(soundUri) // Set the custom sound
-                .setAutoCancel(true); // Auto-cancel the notification when clicked
+                .setSound(soundUri)
+                .setAutoCancel(true)
+                .addAction(R.drawable.ic_stop, "Stop Alarm", stopPendingIntent);
 
-        // Notify if notifications are enabled
-        try {
-            if (notificationsEnabled) {
-                notificationManager.notify(1, notificationBuilder.build());
-            }
-        } catch (SecurityException e) {
-            Toast.makeText(this, "Notification permission not granted", Toast.LENGTH_SHORT).show();
+        if (notificationsEnabled) {
+            notificationManager.notify(NOTIFICATION_ID, notificationBuilder.build());
         }
     }
 
@@ -276,5 +264,6 @@ public class SpeedMonitorService extends Service {
     public void onDestroy() {
         super.onDestroy();
         stopAlarmSound();
+        stopMonitoringSpeed();
     }
 }

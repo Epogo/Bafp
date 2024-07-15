@@ -142,7 +142,7 @@ public class MainActivity extends AppCompatActivity {
     private void startSpeedMonitorService() {
         Intent intent = new Intent(this, SpeedMonitorService.class);
         intent.putExtra("minSpeed", minSpeed);
-        intent.putExtra("timer", timerLimit * 60000L);
+        intent.putExtra("timer", timerLimit * 60000L); // Convert minutes to milliseconds
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             ContextCompat.startForegroundService(this, intent);
         } else {
@@ -154,6 +154,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void stopSpeedMonitorService() {
         stopService(new Intent(this, SpeedMonitorService.class));
+    }
+
+    private void stopAlarm() {
+        Intent intent = new Intent(this, SpeedMonitorService.class);
+        intent.setAction("STOP_ALARM");
+        startService(intent);
     }
 
     private void startLocationUpdates() {
@@ -175,8 +181,8 @@ public class MainActivity extends AppCompatActivity {
             timerLimit = data.getIntExtra("TIMER_LIMIT", timerLimit);
             updateUI(minSpeed, timerLimit);
 
-            // Restart the service with new settings
-            stopSpeedMonitorService();
+            // Stop the alarm and restart the service with new settings
+            stopAlarm();
             if (monitoringToggleButton.isChecked()) {
                 startSpeedMonitorService();
             }
@@ -194,6 +200,9 @@ public class MainActivity extends AppCompatActivity {
         locationManager.removeUpdates(locationListener);
         // Unregister the BroadcastReceiver
         unregisterReceiver(permissionReceiver);
+
+        // Stop the alarm
+        stopAlarm();
 
         // Check the toggle state before stopping the service
         if (!sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true)) {
@@ -229,6 +238,13 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 Toast.makeText(this, "Notification permission denied", Toast.LENGTH_SHORT).show();
             }
+        }
+    }
+
+    public void onPopUpAlertDismissed() {
+        stopAlarm();
+        if (monitoringToggleButton.isChecked()) {
+            startSpeedMonitorService();
         }
     }
 }
