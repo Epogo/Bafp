@@ -140,7 +140,7 @@ public class SpeedMonitorService extends Service {
                     }
                 }
 
-                if (hasMovedAboveThreshold && !isAlarmActive && totalTimeBelowThreshold >= 1000) {
+                if (hasMovedAboveThreshold && !isAlarmActive && totalTimeBelowThreshold >= timer) {
                     triggerAlarm();
                 }
             }
