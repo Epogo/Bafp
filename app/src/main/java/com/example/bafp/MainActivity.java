@@ -118,9 +118,26 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        minSpeed = sharedPreferences.getInt(KEY_MIN_SPEED, 15);
-        timerLimit = sharedPreferences.getInt(KEY_TIMER_LIMIT, 5);
-        updateUI(minSpeed, timerLimit);
+        // Check if the monitoring toggle is enabled and restart the service if necessary
+        boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
+        if (isMonitoringEnabled) {
+            startSpeedMonitorService();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Stop location updates
+        locationManager.removeUpdates(locationListener);
+        // Unregister the BroadcastReceiver
+        unregisterReceiver(permissionReceiver);
+
+        // Check the toggle state before stopping the service
+        if (!sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true)) {
+            // Stop the SpeedMonitorService
+            stopSpeedMonitorService();
+        }
     }
 
     private void checkAndRequestPermissions() {
@@ -238,24 +255,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateUI(int minSpeed, int timerLimit) {
         settingsTextView.setText(String.format("Minimum Speed: %d km/h\nTimer Limit: %d minutes", minSpeed, timerLimit));
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        // Stop location updates
-        locationManager.removeUpdates(locationListener);
-        // Unregister the BroadcastReceiver
-        unregisterReceiver(permissionReceiver);
-
-        // Stop the alarm
-        stopAlarm();
-
-        // Check the toggle state before stopping the service
-        if (!sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true)) {
-            // Stop the SpeedMonitorService
-            stopSpeedMonitorService();
-        }
     }
 
     @Override

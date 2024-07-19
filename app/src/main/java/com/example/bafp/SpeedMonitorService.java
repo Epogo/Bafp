@@ -1,7 +1,6 @@
 package com.example.bafp;
 
 import android.Manifest;
-import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -20,7 +19,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -30,73 +28,67 @@ import androidx.core.app.NotificationCompat;
 public class SpeedMonitorService extends Service {
     private static final String CHANNEL_ID = "ChildSafetyChannel";
     private LocationManager locationManager;
+    private boolean notificationsEnabled = false;
     private double minSpeed;
     private long timer;
     private boolean isAlarmActive = false;
     private LocationListener locationListener;
     private MediaPlayer mediaPlayer;
     private Handler handler;
+    private Runnable checkSpeedRunnable;
 
     private boolean hasMovedAboveThreshold = false;
     private long lastBelowThresholdTime = 0;
     private long totalTimeBelowThreshold = 0;
 
     private static final int NOTIFICATION_ID = 1;
-    private static final String TAG = "SpeedMonitorService";
-    private boolean isRunning = false;
+    private static final String PREFS_NAME = "com.example.bafp.PREFS";
+    private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
+
     private SharedPreferences sharedPreferences;
+    private boolean isMonitoringEnabled;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        isRunning = true;
         handler = new Handler(Looper.getMainLooper());
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
     }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        sharedPreferences = getSharedPreferences("com.example.bafp.PREFS", MODE_PRIVATE);
-        boolean isMonitoringEnabled = sharedPreferences.getBoolean("monitoringToggle", true);
-
-        if (!isRunning) {
-            isRunning = true;
-            // Start monitoring
-            Log.d(TAG, "Service Started");
-        }
-
-        if (!isMonitoringEnabled) {
-            stopSelf();
-            return START_NOT_STICKY;
-        }
-
         if (intent != null) {
             String action = intent.getAction();
-            if ("STOP_ALARM".equals(action)) {
-                stopAlarmSound();
-                isAlarmActive = false;
-                // For testing purposes, simulate speed changes
-                handler.postDelayed(() -> simulateSpeed(minSpeed + 10, 10000), 5000); // Simulate speed above threshold for 10 seconds
-                handler.postDelayed(() -> simulateSpeed(minSpeed - 5, timer + 1000), 11000);
-                resetMonitoring();
+            if ("STOP_SERVICE".equals(action)) {
+                stopMonitoringSpeed();
                 return START_NOT_STICKY;
+            } else if ("STOP_ALARM".equals(action)) {
+                stopAlarmSound();
+                if (checkLocationPermission() && checkNotificationPermission()) {
+                    if (isMonitoringEnabled) {
+                        startMonitoringSpeed();
+                    }
+                } else {
+                    stopSelf();
+                }
+                return START_STICKY;
             }
-        }
 
-        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            minSpeed = intent.getDoubleExtra("minSpeed", 30);
+            timer = intent.getLongExtra("timer", 180000);
 
-        minSpeed = intent.getDoubleExtra("minSpeed", 30); // Default to 30 km/h if not provided
-        timer = intent.getLongExtra("timer", 180000); // Default to 3 minutes (180000 ms) if not provided
+            createNotificationChannel();
+            startForeground(NOTIFICATION_ID, createNotification());
 
-        createNotificationChannel();
-        startForeground(NOTIFICATION_ID, createNotification());
-
-        if (checkLocationPermission() && checkNotificationPermission()) {
-            startMonitoringSpeed();
-            // For testing purposes, simulate speed changes
-            handler.postDelayed(() -> simulateSpeed(minSpeed + 10, 10000), 5000); // Simulate speed above threshold for 10 seconds
-            handler.postDelayed(() -> simulateSpeed(minSpeed - 5, timer + 1000), 11000); // Simulate speed below threshold
-        } else {
-            stopSelf();
+            if (checkLocationPermission() && checkNotificationPermission()) {
+                if (isMonitoringEnabled) {
+                    startMonitoringSpeed();
+                }
+            } else {
+                stopSelf();
+            }
         }
 
         return START_STICKY;
@@ -117,16 +109,23 @@ public class SpeedMonitorService extends Service {
                 return false;
             }
         }
+        notificationsEnabled = true;
         return true;
     }
 
     private void startMonitoringSpeed() {
-        handler = new Handler(Looper.getMainLooper());
+        if (locationManager == null) {
+            Log.e("SpeedMonitorService", "LocationManager is null");
+            return;
+        }
 
         locationListener = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
-                double speedKmh = location.getSpeed() * 3.6; // Convert m/s to km/h
+                if (location == null) {
+                    return;
+                }
+                double speedKmh = location.getSpeed() * 3.6;
                 long currentTime = System.currentTimeMillis();
 
                 if (speedKmh > minSpeed) {
@@ -141,7 +140,7 @@ public class SpeedMonitorService extends Service {
                     }
                 }
 
-                if (hasMovedAboveThreshold && !isAlarmActive && totalTimeBelowThreshold >= 3000) {
+                if (hasMovedAboveThreshold && !isAlarmActive && totalTimeBelowThreshold >= 1000) {
                     triggerAlarm();
                 }
             }
@@ -157,7 +156,9 @@ public class SpeedMonitorService extends Service {
         };
 
         try {
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locationListener);
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locationListener);
+            }
         } catch (SecurityException e) {
             Log.e("SpeedMonitorService", "Location permission not granted");
         }
@@ -165,7 +166,7 @@ public class SpeedMonitorService extends Service {
 
     private void triggerAlarm() {
         if (isAlarmActive) {
-            return; // Only trigger the alarm once
+            return;
         }
         isAlarmActive = true;
 
@@ -174,13 +175,15 @@ public class SpeedMonitorService extends Service {
         Intent broadcastIntent = new Intent(this, AlertReceiver.class);
         sendBroadcast(broadcastIntent);
 
-        showNotification(null); // No PendingIntent required
+        showNotification(null);
         playAlarmSound();
     }
 
     private void playAlarmSound() {
-        mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
-        mediaPlayer.setLooping(true);
+        if (mediaPlayer == null) {
+            mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
+            mediaPlayer.setLooping(true);
+        }
         mediaPlayer.start();
     }
 
@@ -193,119 +196,77 @@ public class SpeedMonitorService extends Service {
     }
 
     private void stopMonitoringSpeed() {
-        if (locationListener != null) {
+        if (locationManager != null && locationListener != null) {
             locationManager.removeUpdates(locationListener);
         }
-        if (handler != null) {
-            handler.removeCallbacksAndMessages(null);
+        if (handler != null && checkSpeedRunnable != null) {
+            handler.removeCallbacks(checkSpeedRunnable);
         }
-        stopAlarmSound();
+        stopForeground(true);
         stopSelf();
     }
 
-    private void resetMonitoring() {
-        hasMovedAboveThreshold = false;
-        lastBelowThresholdTime = 0;
-        totalTimeBelowThreshold = 0;
-        isAlarmActive = false;
-        startMonitoringSpeed();
-    }
-
-    private void showNotification(PendingIntent contentIntent) {
-        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Child Safety Alerts", NotificationManager.IMPORTANCE_HIGH);
-            channel.setDescription("Alerts for child safety");
-            channel.enableLights(true);
-            channel.enableVibration(true);
-            notificationManager.createNotificationChannel(channel);
-        }
-
+    private void showNotification(String contentText) {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("Speed Monitor Service")
+                .setContentText(contentText != null ? contentText : "Speed monitoring in progress")
                 .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle("Child Safety Alert")
-                .setContentText("Vehicle has stopped. Check on your child!")
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
-                .setFullScreenIntent(contentIntent, true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true);
 
-        notificationManager.notify(NOTIFICATION_ID, builder.build());
+        Intent stopAlarmIntent = new Intent(this, SpeedMonitorService.class);
+        stopAlarmIntent.setAction("STOP_ALARM");
+        PendingIntent pendingIntent = PendingIntent.getService(this, 0, stopAlarmIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+        builder.addAction(R.drawable.ic_stop, "Stop Alarm", pendingIntent);
+
+        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager != null) {
+            notificationManager.notify(NOTIFICATION_ID, builder.build());
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = "Speed Monitor Channel";
+            String description = "Channel for Speed Monitor Service notifications";
+            int importance = NotificationManager.IMPORTANCE_HIGH;
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
+            }
+        }
     }
 
     private Notification createNotification() {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Speed Monitor Service")
-                .setContentText("Monitoring vehicle speed...")
+                .setContentText("Speed monitoring in progress")
                 .setSmallIcon(R.drawable.ic_notification)
                 .setPriority(NotificationCompat.PRIORITY_LOW);
 
         return builder.build();
     }
 
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "Child Safety Notifications";
-            String description = "Notifications for child safety reminders";
-            int importance = NotificationManager.IMPORTANCE_LOW;
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
-            channel.setDescription(description);
-
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
-        }
-    }
-
-    @Override
-    public void onTaskRemoved(Intent rootIntent) {
-        Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
-        restartServiceIntent.setPackage(getPackageName());
-        PendingIntent restartServicePendingIntent = PendingIntent.getService(
-                getApplicationContext(), 1, restartServiceIntent, PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
-
-        AlarmManager alarmService = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        alarmService.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + 1000, restartServicePendingIntent);
+    private void simulateSpeedChange(double speedKmh) {
+        long currentTime = System.currentTimeMillis();
+        Location location = new Location(LocationManager.GPS_PROVIDER);
+        location.setSpeed((float) (speedKmh / 3.6));
+        location.setTime(currentTime);
+        locationListener.onLocationChanged(location);
     }
 
     @Override
     public void onDestroy() {
+        stopMonitoringSpeed();
+        stopAlarmSound();
         super.onDestroy();
-        // Clean up resources here
-        isRunning = false;
-        Log.d(TAG, "Service Destroyed");
     }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
-    }
-
-    private void simulateSpeed(final double speedKmh, long durationMillis) {
-        if (locationManager == null) {
-            locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        }
-
-        final Location mockLocation = new Location(LocationManager.GPS_PROVIDER);
-        mockLocation.setLatitude(0.0); // dummy latitude
-        mockLocation.setLongitude(0.0); // dummy longitude
-        mockLocation.setAccuracy(1);
-        mockLocation.setTime(System.currentTimeMillis());
-        mockLocation.setSpeed((float) (speedKmh / 3.6)); // speed in m/s
-
-        handler.postDelayed(() -> {
-            mockLocation.setSpeed(0.0f); // set speed to 0
-            if (locationListener != null) {
-                locationListener.onLocationChanged(mockLocation);
-            }
-        }, durationMillis);
-
-        long interval = 1000; // 1 second interval
-        for (long i = 0; i < durationMillis; i += interval) {
-            handler.postDelayed(() -> {
-                if (locationListener != null) {
-                    locationListener.onLocationChanged(mockLocation);
-                }
-            }, i);
-        }
     }
 }
