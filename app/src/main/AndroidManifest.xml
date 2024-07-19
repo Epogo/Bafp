@@ -35,14 +35,15 @@
             android:name=".SpeedMonitorService"
             android:enabled="true"
             android:exported="false" />
+        <receiver android:name=".AlertReceiver" />
+
 
         <activity android:name=".SettingsActivity" />
-        <activity
-            android:name=".PopUpAlertActivity"
-            android:theme="@android:style/Theme.Dialog"
-            android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:launchMode="singleInstance" />
+        <activity android:name=".PopUpAlertActivity"
+            android:theme="@style/Theme.AppCompat.Dialog"
+            android:screenOrientation="portrait"
+            android:launchMode="singleTop" />
+
 
         <receiver
             android:name=".BootCompletionReceiver"

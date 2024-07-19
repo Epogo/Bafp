@@ -10,8 +10,10 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -28,6 +30,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 2;
     private static final int SETTINGS_REQUEST_CODE = 3;
+    private static final int REQUEST_OVERLAY_PERMISSION_CODE = 4;
     private static final String ACTION_REQUEST_PERMISSION = "com.example.bafp.REQUEST_PERMISSION";
     private static final String PREFS_NAME = "com.example.bafp.PREFS";
     private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
@@ -128,6 +131,12 @@ public class MainActivity extends AppCompatActivity {
                 startSpeedMonitorService();
             }
         }
+
+        if (!Settings.canDrawOverlays(this)) {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            startActivityForResult(intent, REQUEST_OVERLAY_PERMISSION_CODE);
+        }
     }
 
     @Override
@@ -204,6 +213,11 @@ public class MainActivity extends AppCompatActivity {
             stopAlarm();
             if (monitoringToggleButton.isChecked()) {
                 startSpeedMonitorService();
+            }
+        } else if (requestCode == REQUEST_OVERLAY_PERMISSION_CODE) {
+            if (!Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "Overlay permission is required for this app to function properly.", Toast.LENGTH_LONG).show();
+                finish();
             }
         }
     }
