@@ -14,6 +14,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -22,6 +23,7 @@ import android.widget.Toast;
 import android.widget.ToggleButton;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -31,6 +33,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 2;
     private static final int SETTINGS_REQUEST_CODE = 3;
     private static final int REQUEST_OVERLAY_PERMISSION_CODE = 4;
+    private static final int REQUEST_CODE_SYSTEM_ALERT_WINDOW = 5;
     private static final String ACTION_REQUEST_PERMISSION = "com.example.bafp.REQUEST_PERMISSION";
     private static final String PREFS_NAME = "com.example.bafp.PREFS";
     private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
@@ -181,7 +184,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void stopSpeedMonitorService() {
-        stopService(new Intent(this, SpeedMonitorService.class));
+        Intent intent = new Intent(this, SpeedMonitorService.class);
+        boolean stopped = stopService(intent);
+        if (stopped) {
+            Log.d("MainActivity", "Service stopped successfully");
+        } else {
+            Log.d("MainActivity", "Failed to stop service");
+        }
     }
 
     private void stopAlarm() {
@@ -215,6 +224,11 @@ public class MainActivity extends AppCompatActivity {
                 startSpeedMonitorService();
             }
         } else if (requestCode == REQUEST_OVERLAY_PERMISSION_CODE) {
+            if (!Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "Overlay permission is required for this app to function properly.", Toast.LENGTH_LONG).show();
+                finish();
+            }
+        } else if (requestCode == REQUEST_CODE_SYSTEM_ALERT_WINDOW) {
             if (!Settings.canDrawOverlays(this)) {
                 Toast.makeText(this, "Overlay permission is required for this app to function properly.", Toast.LENGTH_LONG).show();
                 finish();
@@ -277,5 +291,45 @@ public class MainActivity extends AppCompatActivity {
         if (monitoringToggleButton.isChecked()) {
             startSpeedMonitorService();
         }
+    }
+
+    private void showPermissionDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Permissions Required")
+                .setMessage("This app needs to show notifications on the locked screen and display popups when running in the background. Please grant these permissions.")
+                .setPositiveButton("OK", (dialog, which) -> {
+                    requestSystemAlertWindowPermission();
+                    showNotificationSettings();
+                    showLockScreenSettings();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void requestSystemAlertWindowPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivityForResult(intent, REQUEST_CODE_SYSTEM_ALERT_WINDOW);
+            }
+        }
+    }
+
+    private void showNotificationSettings() {
+        Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intent.putExtra(Settings.EXTRA_CHANNEL_ID, getPackageName());
+        }
+
+        startActivity(intent);
+    }
+
+    private void showLockScreenSettings() {
+        Intent intent = new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
+        startActivity(intent);
     }
 }

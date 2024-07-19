@@ -37,13 +37,12 @@
             android:exported="false" />
         <receiver android:name=".AlertReceiver" />
 
-
         <activity android:name=".SettingsActivity" />
-        <activity android:name=".PopUpAlertActivity"
+        <activity
+            android:name=".PopUpAlertActivity"
             android:theme="@style/Theme.AppCompat.Dialog"
             android:screenOrientation="portrait"
             android:launchMode="singleTop" />
-
 
         <receiver
             android:name=".BootCompletionReceiver"
