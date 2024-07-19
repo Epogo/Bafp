@@ -37,7 +37,12 @@
             android:exported="false" />
 
         <activity android:name=".SettingsActivity" />
-        <activity android:name=".PopUpAlertActivity" />
+        <activity
+            android:name=".PopUpAlertActivity"
+            android:theme="@android:style/Theme.Dialog"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance" />
 
         <receiver
             android:name=".BootCompletionReceiver"

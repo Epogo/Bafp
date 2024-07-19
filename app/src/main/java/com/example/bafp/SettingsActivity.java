@@ -17,7 +17,7 @@ public class SettingsActivity extends AppCompatActivity {
     private TextView timerLimitValueTextView;
     private Button setButton;
 
-    private static final String PREFS_NAME = "BafpPrefs";
+    private static final String PREFS_NAME = "com.example.bafp.PREFS";
     private static final String KEY_MIN_SPEED = "min_speed";
     private static final String KEY_TIMER_LIMIT = "timer_limit";
 
@@ -53,6 +53,7 @@ public class SettingsActivity extends AppCompatActivity {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int minSpeed = progress + 15; // Convert progress back to actual speed (15 + progress)
                 minSpeedValueTextView.setText(String.valueOf(minSpeed));
+                saveSettings();
             }
 
             @Override
@@ -67,6 +68,7 @@ public class SettingsActivity extends AppCompatActivity {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int minutes = progress + 1; // Convert progress back to actual minutes (1 + progress)
                 timerLimitValueTextView.setText(String.valueOf(minutes));
+                saveSettings();
             }
 
             @Override

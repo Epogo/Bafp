@@ -31,6 +31,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String ACTION_REQUEST_PERMISSION = "com.example.bafp.REQUEST_PERMISSION";
     private static final String PREFS_NAME = "com.example.bafp.PREFS";
     private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
+    private static final String KEY_MIN_SPEED = "min_speed";
+    private static final String KEY_TIMER_LIMIT = "timer_limit";
 
     private TextView speedTextView;
     private TextView settingsTextView;
@@ -61,9 +63,9 @@ public class MainActivity extends AppCompatActivity {
 
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
-        SharedPreferences sharedPreferences = getSharedPreferences("BafpPrefs", MODE_PRIVATE);
-        minSpeed = sharedPreferences.getInt("min_speed", 15);
-        timerLimit = sharedPreferences.getInt("timer_limit", 5);
+        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        minSpeed = sharedPreferences.getInt(KEY_MIN_SPEED, 15);
+        timerLimit = sharedPreferences.getInt(KEY_TIMER_LIMIT, 5);
         updateUI(minSpeed, timerLimit);
         boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
         monitoringToggleButton.setChecked(isMonitoringEnabled);
@@ -97,14 +99,7 @@ public class MainActivity extends AppCompatActivity {
             public void onProviderDisabled(String provider) {}
         };
 
-        // Check for location permission
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
-        } else {
-            if (isMonitoringEnabled) {
-                startSpeedMonitorService();
-            }
-        }
+        checkAndRequestPermissions();
 
         // Register the BroadcastReceiver
         IntentFilter filter = new IntentFilter(ACTION_REQUEST_PERMISSION);
@@ -112,6 +107,27 @@ public class MainActivity extends AppCompatActivity {
 
         // Initialize with default values or saved settings
         updateUI(minSpeed, timerLimit);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        minSpeed = sharedPreferences.getInt(KEY_MIN_SPEED, 15);
+        timerLimit = sharedPreferences.getInt(KEY_TIMER_LIMIT, 5);
+        updateUI(minSpeed, timerLimit);
+    }
+
+    private void checkAndRequestPermissions() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST_CODE);
+        } else {
+            if (monitoringToggleButton.isChecked()) {
+                startSpeedMonitorService();
+            }
+        }
     }
 
     @Override
@@ -213,6 +229,8 @@ public class MainActivity extends AppCompatActivity {
             stopSpeedMonitorService();
         }
     }
+
+    @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (intent != null && "ALERT_DISMISSED".equals(intent.getAction())) {
@@ -231,21 +249,11 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE || requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                if (monitoringToggleButton.isChecked()) {
-                    startSpeedMonitorService();
-                }
+                checkAndRequestPermissions();
             } else {
-                Toast.makeText(this, "Location permission denied", Toast.LENGTH_SHORT).show();
-            }
-        } else if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                if (monitoringToggleButton.isChecked()) {
-                    startSpeedMonitorService();
-                }
-            } else {
-                Toast.makeText(this, "Notification permission denied", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show();
             }
         }
     }
