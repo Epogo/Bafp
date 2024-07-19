@@ -27,6 +27,10 @@ import androidx.core.app.NotificationCompat;
 
 public class SpeedMonitorService extends Service {
     private static final String CHANNEL_ID = "ChildSafetyChannel";
+    private static final int NOTIFICATION_ID = 1;
+    private static final String PREFS_NAME = "com.example.bafp.PREFS";
+    private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
+
     private LocationManager locationManager;
     private boolean notificationsEnabled = false;
     private double minSpeed;
@@ -40,10 +44,6 @@ public class SpeedMonitorService extends Service {
     private boolean hasMovedAboveThreshold = false;
     private long lastBelowThresholdTime = 0;
     private long totalTimeBelowThreshold = 0;
-
-    private static final int NOTIFICATION_ID = 1;
-    private static final String PREFS_NAME = "com.example.bafp.PREFS";
-    private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
 
     private SharedPreferences sharedPreferences;
     private boolean isMonitoringEnabled;
@@ -112,6 +112,18 @@ public class SpeedMonitorService extends Service {
         notificationsEnabled = true;
         return true;
     }
+
+    private Notification createNotification() {
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("Speed Monitor Service")
+                .setContentText("Speed monitoring in progress")
+                .setSmallIcon(R.drawable.ic_notification)  // Replace with your notification icon
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setOngoing(true); // This ensures the notification cannot be dismissed by the user
+
+        return builder.build();
+    }
+
 
     private void startMonitoringSpeed() {
         if (locationManager == null) {
@@ -210,7 +222,7 @@ public class SpeedMonitorService extends Service {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Speed Monitor Service")
                 .setContentText(contentText != null ? contentText : "Speed monitoring in progress")
-                .setSmallIcon(R.drawable.ic_notification)
+                .setSmallIcon(R.drawable.ic_notification)  // Replace with your notification icon
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true);
 
@@ -238,24 +250,6 @@ public class SpeedMonitorService extends Service {
                 notificationManager.createNotificationChannel(channel);
             }
         }
-    }
-
-    private Notification createNotification() {
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Speed Monitor Service")
-                .setContentText("Speed monitoring in progress")
-                .setSmallIcon(R.drawable.ic_notification)
-                .setPriority(NotificationCompat.PRIORITY_LOW);
-
-        return builder.build();
-    }
-
-    private void simulateSpeedChange(double speedKmh) {
-        long currentTime = System.currentTimeMillis();
-        Location location = new Location(LocationManager.GPS_PROVIDER);
-        location.setSpeed((float) (speedKmh / 3.6));
-        location.setTime(currentTime);
-        locationListener.onLocationChanged(location);
     }
 
     @Override
