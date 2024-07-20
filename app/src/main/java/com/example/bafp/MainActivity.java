@@ -13,6 +13,7 @@ import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.Menu;
@@ -39,6 +40,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
     private static final String KEY_MIN_SPEED = "min_speed";
     private static final String KEY_TIMER_LIMIT = "timer_limit";
+    private static final long CHECK_INTERVAL = 5000; // Interval in milliseconds
 
     private TextView speedTextView;
     private TextView settingsTextView;
@@ -48,6 +50,9 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences sharedPreferences;
     private int minSpeed = 15; // Default min speed in km/h
     private int timerLimit = 5; // Default timer limit in minutes
+
+    private Handler handler;
+    private Runnable checkToggleRunnable;
 
     private BroadcastReceiver permissionReceiver = new BroadcastReceiver() {
         @Override
@@ -111,6 +116,20 @@ public class MainActivity extends AppCompatActivity {
         IntentFilter filter = new IntentFilter(ACTION_REQUEST_PERMISSION);
         registerReceiver(permissionReceiver, filter);
 
+        // Initialize Handler and Runnable
+        handler = new Handler();
+        checkToggleRunnable = new Runnable() {
+            @Override
+            public void run() {
+                boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
+                if (!isMonitoringEnabled) {
+                    stopSpeedMonitorService();
+                }
+                handler.postDelayed(this, CHECK_INTERVAL); // Check periodically
+            }
+        };
+        handler.post(checkToggleRunnable);
+
         // Initialize with default values or saved settings
         updateUI(minSpeed, timerLimit);
     }
@@ -128,14 +147,14 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // Stop location updates
+        if (handler != null && checkToggleRunnable != null) {
+            handler.removeCallbacks(checkToggleRunnable);
+        }
         locationManager.removeUpdates(locationListener);
-        // Unregister the BroadcastReceiver
         unregisterReceiver(permissionReceiver);
 
         // Check the toggle state before stopping the service
         if (!sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true)) {
-            // Stop the SpeedMonitorService
             stopSpeedMonitorService();
         }
     }
