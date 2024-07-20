@@ -66,6 +66,7 @@ public class SpeedMonitorService extends Service {
                 return START_NOT_STICKY;
             } else if ("STOP_ALARM".equals(action)) {
                 stopAlarmSound();
+                resetAlarmState();
                 if (checkLocationPermission() && checkNotificationPermission()) {
                     if (isMonitoringEnabled) {
                         startMonitoringSpeed();
@@ -117,13 +118,12 @@ public class SpeedMonitorService extends Service {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Speed Monitor Service")
                 .setContentText("Speed monitoring in progress")
-                .setSmallIcon(R.drawable.ic_notification)  // Replace with your notification icon
+                .setSmallIcon(R.drawable.ic_notification)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setOngoing(true); // This ensures the notification cannot be dismissed by the user
+                .setOngoing(true);
 
         return builder.build();
     }
-
 
     private void startMonitoringSpeed() {
         if (locationManager == null) {
@@ -141,6 +141,9 @@ public class SpeedMonitorService extends Service {
                 long currentTime = System.currentTimeMillis();
 
                 if (speedKmh > minSpeed) {
+                    if (hasMovedAboveThreshold && isAlarmActive) {
+                        resetAlarmState();
+                    }
                     hasMovedAboveThreshold = true;
                     totalTimeBelowThreshold = 0;
                     lastBelowThresholdTime = 0;
@@ -187,7 +190,7 @@ public class SpeedMonitorService extends Service {
         Intent broadcastIntent = new Intent(this, AlertReceiver.class);
         sendBroadcast(broadcastIntent);
 
-        showNotification(null);
+        showNotification("Speed below threshold for too long!");
         playAlarmSound();
     }
 
@@ -207,6 +210,14 @@ public class SpeedMonitorService extends Service {
         }
     }
 
+    private void resetAlarmState() {
+        isAlarmActive = false;
+        hasMovedAboveThreshold = false;
+        totalTimeBelowThreshold = 0;
+        lastBelowThresholdTime = 0;
+        showNotification("Speed monitoring in progress");
+    }
+
     private void stopMonitoringSpeed() {
         if (locationManager != null && locationListener != null) {
             locationManager.removeUpdates(locationListener);
@@ -221,8 +232,8 @@ public class SpeedMonitorService extends Service {
     private void showNotification(String contentText) {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Speed Monitor Service")
-                .setContentText(contentText != null ? contentText : "Speed monitoring in progress")
-                .setSmallIcon(R.drawable.ic_notification)  // Replace with your notification icon
+                .setContentText(contentText)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true);
 
