@@ -19,6 +19,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -26,6 +27,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 
 public class SpeedMonitorService extends Service {
+    private static final String TAG = "SpeedMonitorService";
     private static final String CHANNEL_ID = "ChildSafetyChannel";
     private static final int NOTIFICATION_ID = 1;
     private static final String PREFS_NAME = "com.example.bafp.PREFS";
@@ -48,6 +50,14 @@ public class SpeedMonitorService extends Service {
     private SharedPreferences sharedPreferences;
     private boolean isMonitoringEnabled;
 
+    private PowerManager.WakeLock wakeLock;
+
+    // Simulation variables
+    private boolean isSimulationMode = true;
+    private long simulationStartTime;
+    private static final long SIMULATION_HIGH_SPEED_DURATION = 10000; // 10 seconds
+    private static final long SIMULATION_TOTAL_DURATION = 70000; // 70 seconds (10s + 60s)
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -55,6 +65,16 @@ public class SpeedMonitorService extends Service {
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
+
+        // Initialize WakeLock
+        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SpeedMonitorService::WakeLock");
+        try {
+            wakeLock.acquire();
+        } catch (SecurityException e) {
+            Log.e(TAG, "WakeLock permission not granted", e);
+            stopSelf();
+        }
     }
 
     @Override
@@ -80,6 +100,10 @@ public class SpeedMonitorService extends Service {
             minSpeed = intent.getDoubleExtra("minSpeed", 30);
             timer = intent.getLongExtra("timer", 180000);
 
+            if (isSimulationMode) {
+                simulationStartTime = System.currentTimeMillis();
+            }
+
             createNotificationChannel();
             startForeground(NOTIFICATION_ID, createNotification());
 
@@ -98,6 +122,7 @@ public class SpeedMonitorService extends Service {
     private boolean checkLocationPermission() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "Location permission not granted", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Location permission not granted");
             return false;
         }
         return true;
@@ -107,6 +132,7 @@ public class SpeedMonitorService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "Notification permission not granted", Toast.LENGTH_SHORT).show();
+                Log.e(TAG, "Notification permission not granted");
                 return false;
             }
         }
@@ -127,36 +153,17 @@ public class SpeedMonitorService extends Service {
 
     private void startMonitoringSpeed() {
         if (locationManager == null) {
-            Log.e("SpeedMonitorService", "LocationManager is null");
+            Log.e(TAG, "LocationManager is null");
             return;
         }
 
         locationListener = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
-                if (location == null) {
-                    return;
-                }
-                double speedKmh = location.getSpeed() * 3.6;
-                long currentTime = System.currentTimeMillis();
-
-                if (speedKmh > minSpeed) {
-                    if (hasMovedAboveThreshold && isAlarmActive) {
-                        resetAlarmState();
-                    }
-                    hasMovedAboveThreshold = true;
-                    totalTimeBelowThreshold = 0;
-                    lastBelowThresholdTime = 0;
-                } else if (hasMovedAboveThreshold) {
-                    if (lastBelowThresholdTime == 0) {
-                        lastBelowThresholdTime = currentTime;
-                    } else {
-                        totalTimeBelowThreshold = currentTime - lastBelowThresholdTime;
-                    }
-                }
-
-                if (hasMovedAboveThreshold && !isAlarmActive && totalTimeBelowThreshold >= timer) {
-                    triggerAlarm();
+                if (isSimulationMode) {
+                    handleSimulatedLocation();
+                } else {
+                    handleRealLocation(location);
                 }
             }
 
@@ -173,10 +180,63 @@ public class SpeedMonitorService extends Service {
         try {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locationListener);
+                Log.d(TAG, "Location updates requested");
             }
         } catch (SecurityException e) {
-            Log.e("SpeedMonitorService", "Location permission not granted");
+            Log.e(TAG, "Location permission not granted", e);
         }
+    }
+
+    private void handleSimulatedLocation() {
+        long elapsedTime = System.currentTimeMillis() - simulationStartTime;
+        double speedKmh;
+
+        if (elapsedTime < SIMULATION_HIGH_SPEED_DURATION) {
+            speedKmh = 40.0; // 40 km/h for first 10 seconds
+        } else if (elapsedTime < SIMULATION_TOTAL_DURATION) {
+            speedKmh = 0.0; // 0 km/h for next 60 seconds
+        } else {
+            // Reset simulation or stop service
+            isSimulationMode = false;
+            stopSelf();
+            return;
+        }
+
+        processSpeed(speedKmh);
+    }
+
+    private void handleRealLocation(Location location) {
+        if (location == null) {
+            return;
+        }
+        double speedKmh = location.getSpeed() * 3.6;
+        processSpeed(speedKmh);
+    }
+
+    private void processSpeed(double speedKmh) {
+        long currentTime = System.currentTimeMillis();
+
+        if (speedKmh > minSpeed) {
+            if (hasMovedAboveThreshold && isAlarmActive) {
+                resetAlarmState();
+            }
+            hasMovedAboveThreshold = true;
+            totalTimeBelowThreshold = 0;
+            lastBelowThresholdTime = 0;
+        } else if (hasMovedAboveThreshold) {
+            if (lastBelowThresholdTime == 0) {
+                lastBelowThresholdTime = currentTime;
+            } else {
+                totalTimeBelowThreshold = currentTime - lastBelowThresholdTime;
+            }
+        }
+
+        if (hasMovedAboveThreshold && !isAlarmActive && totalTimeBelowThreshold >= timer) {
+            triggerAlarm();
+        }
+
+        // Log the current speed for debugging
+        Log.d(TAG, "Current speed: " + speedKmh + " km/h");
     }
 
     private void triggerAlarm() {
@@ -185,7 +245,7 @@ public class SpeedMonitorService extends Service {
         }
         isAlarmActive = true;
 
-        Log.d("SpeedMonitorService", "Alarm triggered, launching PopUpAlertActivity.");
+        Log.d(TAG, "Alarm triggered, launching PopUpAlertActivity.");
 
         Intent broadcastIntent = new Intent(this, AlertReceiver.class);
         sendBroadcast(broadcastIntent);
@@ -200,6 +260,7 @@ public class SpeedMonitorService extends Service {
             mediaPlayer.setLooping(true);
         }
         mediaPlayer.start();
+        Log.d(TAG, "Alarm sound started");
     }
 
     private void stopAlarmSound() {
@@ -207,6 +268,7 @@ public class SpeedMonitorService extends Service {
             mediaPlayer.stop();
             mediaPlayer.release();
             mediaPlayer = null;
+            Log.d(TAG, "Alarm sound stopped");
         }
     }
 
@@ -216,15 +278,18 @@ public class SpeedMonitorService extends Service {
         totalTimeBelowThreshold = 0;
         lastBelowThresholdTime = 0;
         showNotification("Speed monitoring in progress");
+        Log.d(TAG, "Alarm state reset");
     }
 
     private void stopMonitoringSpeed() {
         if (locationManager != null && locationListener != null) {
             locationManager.removeUpdates(locationListener);
+            Log.d(TAG, "Location updates removed");
         }
         if (handler != null && checkSpeedRunnable != null) {
             handler.removeCallbacks(checkSpeedRunnable);
         }
+        isSimulationMode = false;
         stopForeground(true);
         stopSelf();
     }
@@ -246,6 +311,7 @@ public class SpeedMonitorService extends Service {
         if (notificationManager != null) {
             notificationManager.notify(NOTIFICATION_ID, builder.build());
         }
+        Log.d(TAG, "Notification shown: " + contentText);
     }
 
     private void createNotificationChannel() {
@@ -267,7 +333,11 @@ public class SpeedMonitorService extends Service {
     public void onDestroy() {
         stopMonitoringSpeed();
         stopAlarmSound();
+        if (wakeLock.isHeld()) {
+            wakeLock.release();
+        }
         super.onDestroy();
+        Log.d(TAG, "Service destroyed");
     }
 
     @Override
