@@ -29,11 +29,15 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 2;
     private static final int SETTINGS_REQUEST_CODE = 3;
     private static final int REQUEST_OVERLAY_PERMISSION = 1234;
+    private static final int PERMISSIONS_REQUEST_CODE = 5678;
     private static final String ACTION_REQUEST_PERMISSION = "com.example.bafp.REQUEST_PERMISSION";
     private static final String PREFS_NAME = "com.example.bafp.PREFS";
     private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
@@ -57,7 +61,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (ACTION_REQUEST_PERMISSION.equals(intent.getAction())) {
-                requestPostNotificationsPermission();
+                checkAllPermissions();
             }
         }
     };
@@ -87,6 +91,8 @@ public class MainActivity extends AppCompatActivity {
             SharedPreferences.Editor editor = sharedPreferences.edit();
             editor.putBoolean("IS_FIRST_RUN", false);
             editor.apply();
+        } else {
+            checkAllPermissions();
         }
 
         monitoringToggleButton.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -117,8 +123,6 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onProviderDisabled(String provider) {}
         };
-
-        checkAndRequestPermissions();
 
         // Register the BroadcastReceiver
         IntentFilter filter = new IntentFilter(ACTION_REQUEST_PERMISSION);
@@ -167,20 +171,31 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void checkAndRequestPermissions() {
+    private void checkAllPermissions() {
+        List<String> permissionsToRequest = new ArrayList<>();
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST_CODE);
-        } else {
-            if (monitoringToggleButton.isChecked()) {
-                startSpeedMonitorService();
+            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS);
             }
+        }
+
+        if (!permissionsToRequest.isEmpty()) {
+            ActivityCompat.requestPermissions(this, permissionsToRequest.toArray(new String[0]), PERMISSIONS_REQUEST_CODE);
         }
 
         if (!Settings.canDrawOverlays(this)) {
             requestOverlayPermission();
+        }
+
+        if (permissionsToRequest.isEmpty() && Settings.canDrawOverlays(this)) {
+            if (monitoringToggleButton.isChecked()) {
+                startSpeedMonitorService();
+            }
         }
     }
 
@@ -267,7 +282,9 @@ public class MainActivity extends AppCompatActivity {
             }
         } else if (requestCode == REQUEST_OVERLAY_PERMISSION) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
-                requestNotificationPermission();
+                if (monitoringToggleButton.isChecked()) {
+                    startSpeedMonitorService();
+                }
             } else {
                 Toast.makeText(this, "Overlay permission is required for alerts to work properly.", Toast.LENGTH_LONG).show();
             }
@@ -286,22 +303,50 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void requestPostNotificationsPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST_CODE);
-            }
-        }
+    private void showPermissionInstructions() {
+        new AlertDialog.Builder(this)
+                .setTitle("Permissions Required")
+                .setMessage("This app needs the following permissions to function properly:\n\n" +
+                        "- Location access\n" +
+                        "- Display over other apps\n" +
+                        "- Notifications\n" +
+                        "- Run in background\n\n" +
+                        "We'll guide you through enabling these permissions.")
+                .setPositiveButton("Continue", (dialog, which) -> checkAllPermissions())
+                .setCancelable(false)
+                .show();
+    }
+
+    private void requestOverlayPermission() {
+        new AlertDialog.Builder(this)
+                .setTitle("Overlay Permission Required")
+                .setMessage("This app needs permission to display over other apps. Please enable it in the next screen.")
+                .setPositiveButton("OK", (dialog, which) -> {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:" + getPackageName()));
+                    startActivityForResult(intent, REQUEST_OVERLAY_PERMISSION);
+                })
+                .setCancelable(false)
+                .show();
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE || requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                checkAndRequestPermissions();
+        if (requestCode == PERMISSIONS_REQUEST_CODE) {
+            boolean allGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            if (allGranted) {
+                if (monitoringToggleButton.isChecked()) {
+                    startSpeedMonitorService();
+                }
             } else {
-                Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "All permissions are required for the app to function properly.", Toast.LENGTH_LONG).show();
             }
         }
     }
@@ -310,49 +355,6 @@ public class MainActivity extends AppCompatActivity {
         stopAlarm();
         if (monitoringToggleButton.isChecked()) {
             startSpeedMonitorService();
-        }
-    }
-
-    private void showPermissionInstructions() {
-        new AlertDialog.Builder(this)
-                .setTitle("Permissions Required")
-                .setMessage("This app needs special permissions to show alerts even when the screen is locked or the app is running in the background. We'll guide you through enabling these permissions.")
-                .setPositiveButton("Continue", (dialog, which) -> {
-                    requestOverlayPermission();
-                })
-                .setCancelable(false)
-                .show();
-    }
-
-    private void requestOverlayPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Overlay Permission")
-                    .setMessage("Please enable 'Draw over other apps' permission for this app in the next screen.")
-                    .setPositiveButton("OK", (dialog, which) -> {
-                        Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:" + getPackageName()));
-                        startActivityForResult(intent, REQUEST_OVERLAY_PERMISSION);
-                    })
-                    .setCancelable(false)
-                    .show();
-        } else {
-            requestNotificationPermission();
-        }
-    }
-
-    private void requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Notification Permission")
-                    .setMessage("Please enable notifications for this app in the next screen.")
-                    .setPositiveButton("OK", (dialog, which) -> {
-                        Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
-                        intent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
-                        startActivity(intent);
-                    })
-                    .setCancelable(false)
-                    .show();
         }
     }
 }

@@ -53,7 +53,7 @@ public class SpeedMonitorService extends Service {
     private PowerManager.WakeLock wakeLock;
 
     // Simulation variables
-    private boolean isSimulationMode = true;
+    private boolean isSimulationMode = false;
     private long simulationStartTime;
     private static final long SIMULATION_HIGH_SPEED_DURATION = 10000; // 10 seconds
     private static final long SIMULATION_TOTAL_DURATION = 70000; // 70 seconds (10s + 60s)
