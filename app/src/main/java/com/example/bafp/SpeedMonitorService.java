@@ -97,7 +97,7 @@ public class SpeedMonitorService extends Service {
                 return START_STICKY;
             }
 
-            minSpeed = intent.getDoubleExtra("minSpeed", 30);
+            minSpeed = intent.getIntExtra("minSpeed", 30);
             timer = intent.getLongExtra("timer", 180000);
 
             if (isSimulationMode) {
