@@ -259,7 +259,12 @@ public class MainActivity extends AppCompatActivity {
     private void startLocationUpdates() {
         try {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0f, locationListener);
+                if (locationListener != null) {
+                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0f, locationListener);
+                } else {
+                    Log.e("MainActivity", "LocationListener is null");
+                    // Reinitialize locationListener here if needed
+                }
             }
         } catch (SecurityException e) {
             e.printStackTrace();
