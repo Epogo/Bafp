@@ -52,15 +52,12 @@ public class SpeedMonitorService extends Service {
 
     private PowerManager.WakeLock wakeLock;
 
-    // Simulation variables
-    private boolean isSimulationMode = false;
-    private long simulationStartTime;
-    private static final long SIMULATION_HIGH_SPEED_DURATION = 10000; // 10 seconds
-    private static final long SIMULATION_TOTAL_DURATION = 70000; // 70 seconds (10s + 60s)
+    public static boolean isRunning = false;
 
     @Override
     public void onCreate() {
         super.onCreate();
+        isRunning = true;
         handler = new Handler(Looper.getMainLooper());
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -99,10 +96,6 @@ public class SpeedMonitorService extends Service {
 
             minSpeed = intent.getIntExtra("minSpeed", 30);
             timer = intent.getLongExtra("timer", 180000);
-
-            if (isSimulationMode) {
-                simulationStartTime = System.currentTimeMillis();
-            }
 
             createNotificationChannel();
             startForeground(NOTIFICATION_ID, createNotification());
@@ -160,11 +153,7 @@ public class SpeedMonitorService extends Service {
         locationListener = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
-                if (isSimulationMode) {
-                    handleSimulatedLocation();
-                } else {
-                    handleRealLocation(location);
-                }
+                handleRealLocation(location);
             }
 
             @Override
@@ -185,24 +174,6 @@ public class SpeedMonitorService extends Service {
         } catch (SecurityException e) {
             Log.e(TAG, "Location permission not granted", e);
         }
-    }
-
-    private void handleSimulatedLocation() {
-        long elapsedTime = System.currentTimeMillis() - simulationStartTime;
-        double speedKmh;
-
-        if (elapsedTime < SIMULATION_HIGH_SPEED_DURATION) {
-            speedKmh = 40.0; // 40 km/h for first 10 seconds
-        } else if (elapsedTime < SIMULATION_TOTAL_DURATION) {
-            speedKmh = 0.0; // 0 km/h for next 60 seconds
-        } else {
-            // Reset simulation or stop service
-            isSimulationMode = false;
-            stopSelf();
-            return;
-        }
-
-        processSpeed(speedKmh);
     }
 
     private void handleRealLocation(Location location) {
@@ -289,7 +260,6 @@ public class SpeedMonitorService extends Service {
         if (handler != null && checkSpeedRunnable != null) {
             handler.removeCallbacks(checkSpeedRunnable);
         }
-        isSimulationMode = false;
         stopForeground(true);
         stopSelf();
     }
@@ -331,6 +301,7 @@ public class SpeedMonitorService extends Service {
 
     @Override
     public void onDestroy() {
+        isRunning = false;
         stopMonitoringSpeed();
         stopAlarmSound();
         if (wakeLock.isHeld()) {

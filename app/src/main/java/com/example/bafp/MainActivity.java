@@ -1,6 +1,7 @@
 package com.example.bafp;
 
 import android.Manifest;
+import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -81,7 +82,7 @@ public class MainActivity extends AppCompatActivity {
         minSpeed = sharedPreferences.getInt(KEY_MIN_SPEED, 15);
         timerLimit = sharedPreferences.getInt(KEY_TIMER_LIMIT, 5);
         updateUI(minSpeed, timerLimit);
-        boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
+        boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, false);
         monitoringToggleButton.setChecked(isMonitoringEnabled);
 
         // Check if it's the first run
@@ -133,7 +134,7 @@ public class MainActivity extends AppCompatActivity {
         checkToggleRunnable = new Runnable() {
             @Override
             public void run() {
-                boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
+                boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, false);
                 if (!isMonitoringEnabled) {
                     stopSpeedMonitorService();
                 }
@@ -149,10 +150,17 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Check if the monitoring toggle is enabled and restart the service if necessary
-        boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
+        updateUIBasedOnMonitoringState();
+    }
+
+    private void updateUIBasedOnMonitoringState() {
+        boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, false);
+        monitoringToggleButton.setChecked(isMonitoringEnabled);
+
         if (isMonitoringEnabled) {
-            startSpeedMonitorService();
+            startLocationUpdates();
+        } else {
+            speedTextView.setText("Speed: N/A");
         }
     }
 
@@ -166,7 +174,7 @@ public class MainActivity extends AppCompatActivity {
         unregisterReceiver(permissionReceiver);
 
         // Check the toggle state before stopping the service
-        if (!sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true)) {
+        if (!sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, false)) {
             stopSpeedMonitorService();
         }
     }
@@ -228,26 +236,36 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startSpeedMonitorService() {
-        Intent intent = new Intent(this, SpeedMonitorService.class);
-        intent.putExtra("minSpeed", minSpeed);
-        intent.putExtra("timer", timerLimit * 60000L); // Convert minutes to milliseconds
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ContextCompat.startForegroundService(this, intent);
-        } else {
-            startService(intent);
+        if (!isServiceRunning(SpeedMonitorService.class)) {
+            Intent intent = new Intent(this, SpeedMonitorService.class);
+            intent.putExtra("minSpeed", minSpeed);
+            intent.putExtra("timer", timerLimit * 60000L); // Convert minutes to milliseconds
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
         }
-
         startLocationUpdates();
     }
 
     private void stopSpeedMonitorService() {
-        Intent intent = new Intent(this, SpeedMonitorService.class);
-        boolean stopped = stopService(intent);
-        if (stopped) {
-            Log.d("MainActivity", "Service stopped successfully");
-        } else {
-            Log.d("MainActivity", "Failed to stop service");
+        if (SpeedMonitorService.isRunning) {
+            Intent intent = new Intent(this, SpeedMonitorService.class);
+            stopService(intent);
         }
+        locationManager.removeUpdates(locationListener);
+        speedTextView.setText("Speed: N/A");
+    }
+
+    private boolean isServiceRunning(Class<?> serviceClass) {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (serviceClass.getName().equals(service.service.getClassName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void stopAlarm() {
