@@ -15,7 +15,6 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.MediaPlayer;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -43,9 +42,8 @@ public class SpeedMonitorService extends Service {
     private Handler handler;
     private Runnable checkSpeedRunnable;
 
-    private boolean hasMovedAboveThreshold = false;
-    private long lastBelowThresholdTime = 0;
-    private long totalTimeBelowThreshold = 0;
+    private long continuousTimeBelowThreshold = 0;
+    private long lastProcessedTime = 0;
 
     private SharedPreferences sharedPreferences;
     private boolean isMonitoringEnabled;
@@ -82,7 +80,6 @@ public class SpeedMonitorService extends Service {
                 stopMonitoringSpeed();
                 return START_NOT_STICKY;
             } else if ("STOP_ALARM".equals(action)) {
-                stopAlarmSound();
                 resetAlarmState();
                 if (checkLocationPermission() && checkNotificationPermission()) {
                     if (isMonitoringEnabled) {
@@ -94,8 +91,10 @@ public class SpeedMonitorService extends Service {
                 return START_STICKY;
             }
 
-            minSpeed = intent.getIntExtra("minSpeed", 30);
-            timer = intent.getLongExtra("timer", 180000);
+            minSpeed = intent.getIntExtra("minSpeed", 20); // Set default to 20 km/h
+            timer = intent.getLongExtra("timer", 180000); // 3 minutes in milliseconds
+
+            Log.d(TAG, "Service started with minSpeed: " + minSpeed + " km/h, timer: " + timer + " ms");
 
             createNotificationChannel();
             startForeground(NOTIFICATION_ID, createNotification());
@@ -145,35 +144,7 @@ public class SpeedMonitorService extends Service {
     }
 
     private void startMonitoringSpeed() {
-        if (locationManager == null) {
-            Log.e(TAG, "LocationManager is null");
-            return;
-        }
-
-        locationListener = new LocationListener() {
-            @Override
-            public void onLocationChanged(Location location) {
-                handleRealLocation(location);
-            }
-
-            @Override
-            public void onStatusChanged(String provider, int status, Bundle extras) {}
-
-            @Override
-            public void onProviderEnabled(String provider) {}
-
-            @Override
-            public void onProviderDisabled(String provider) {}
-        };
-
-        try {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locationListener);
-                Log.d(TAG, "Location updates requested");
-            }
-        } catch (SecurityException e) {
-            Log.e(TAG, "Location permission not granted", e);
-        }
+        simulateTravel();
     }
 
     private void handleRealLocation(Location location) {
@@ -187,27 +158,28 @@ public class SpeedMonitorService extends Service {
     private void processSpeed(double speedKmh) {
         long currentTime = System.currentTimeMillis();
 
-        if (speedKmh > minSpeed) {
-            if (hasMovedAboveThreshold && isAlarmActive) {
-                resetAlarmState();
-            }
-            hasMovedAboveThreshold = true;
-            totalTimeBelowThreshold = 0;
-            lastBelowThresholdTime = 0;
-        } else if (hasMovedAboveThreshold) {
-            if (lastBelowThresholdTime == 0) {
-                lastBelowThresholdTime = currentTime;
-            } else {
-                totalTimeBelowThreshold = currentTime - lastBelowThresholdTime;
-            }
+        if (lastProcessedTime == 0) {
+            lastProcessedTime = currentTime;
         }
 
-        if (hasMovedAboveThreshold && !isAlarmActive && totalTimeBelowThreshold >= timer) {
+        long timeDelta = currentTime - lastProcessedTime;
+        lastProcessedTime = currentTime;
+
+        Log.d(TAG, "Processing speed: " + speedKmh + " km/h at time: " + currentTime);
+
+        if (speedKmh <= minSpeed) {
+            continuousTimeBelowThreshold += timeDelta;
+            Log.d(TAG, "Speed below threshold. Continuous time below: " + continuousTimeBelowThreshold + " ms");
+        } else {
+            continuousTimeBelowThreshold = 0;
+            Log.d(TAG, "Speed above threshold. Reset continuous time below threshold.");
+        }
+
+        if (continuousTimeBelowThreshold >= timer) {
             triggerAlarm();
         }
 
-        // Log the current speed for debugging
-        Log.d(TAG, "Current speed: " + speedKmh + " km/h");
+        Log.d(TAG, "Current speed: " + speedKmh + " km/h, Continuous time below threshold: " + continuousTimeBelowThreshold + " ms");
     }
 
     private void triggerAlarm() {
@@ -216,13 +188,18 @@ public class SpeedMonitorService extends Service {
         }
         isAlarmActive = true;
 
-        Log.d(TAG, "Alarm triggered, launching PopUpAlertActivity.");
+        Log.d(TAG, "Alarm triggered at " + System.currentTimeMillis());
 
         Intent broadcastIntent = new Intent(this, AlertReceiver.class);
         sendBroadcast(broadcastIntent);
 
         showNotification("Speed below threshold for too long!");
         playAlarmSound();
+
+        // Launch your popup activity here
+        Intent alertIntent = new Intent(this, PopUpAlertActivity.class);
+        alertIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(alertIntent);
     }
 
     private void playAlarmSound() {
@@ -243,13 +220,14 @@ public class SpeedMonitorService extends Service {
         }
     }
 
+    // Update resetAlarmState to log when alarm is reset
     private void resetAlarmState() {
         isAlarmActive = false;
-        hasMovedAboveThreshold = false;
-        totalTimeBelowThreshold = 0;
-        lastBelowThresholdTime = 0;
+        continuousTimeBelowThreshold = 0;
+        lastProcessedTime = 0;
+        stopAlarmSound();
         showNotification("Speed monitoring in progress");
-        Log.d(TAG, "Alarm state reset");
+        Log.d(TAG, "Alarm state reset at " + System.currentTimeMillis());
     }
 
     private void stopMonitoringSpeed() {
@@ -297,6 +275,51 @@ public class SpeedMonitorService extends Service {
                 notificationManager.createNotificationChannel(channel);
             }
         }
+    }
+
+    private void simulateTravel() {
+        // Speed in km/h
+        double[] speeds = {40, 3, 25, 2};
+        // Duration in milliseconds
+        long[] durations = {3000, 3000, 3000, 180000}; // 0.5 min, 0.5 min, 0.5 min, 3 min
+
+        handler.post(new Runnable() {
+            private int index = 0;
+            private long elapsedTime = 0;
+            private boolean isSimulationComplete = false;
+
+            @Override
+            public void run() {
+                if (index < speeds.length) {
+                    Log.d(TAG, "Simulating travel at " + speeds[index] + " km/h for " + durations[index] + " ms");
+                    Location location = new Location(LocationManager.GPS_PROVIDER);
+                    location.setSpeed((float) (speeds[index] / 3.6)); // Convert km/h to m/s
+                    handleRealLocation(location);
+
+                    elapsedTime += 1000; // Simulate 1 second passing
+                    if (elapsedTime >= durations[index]) {
+                        index++;
+                        elapsedTime = 0;
+                    }
+
+                    handler.postDelayed(this, 1000); // Update every second
+                } else if (!isSimulationComplete) {
+                    Log.d(TAG, "Simulation completed. Waiting for user to press OK...");
+                    isSimulationComplete = true;
+                    // Wait for user to press OK before restarting the simulation
+                    handler.postDelayed(this, 1000);
+                } else if (!isAlarmActive) {
+                    Log.d(TAG, "Restarting simulation");
+                    index = 0;
+                    elapsedTime = 0;
+                    isSimulationComplete = false;
+                    handler.post(this);
+                } else {
+                    // If alarm is still active, wait and check again
+                    handler.postDelayed(this, 1000);
+                }
+            }
+        });
     }
 
     @Override
