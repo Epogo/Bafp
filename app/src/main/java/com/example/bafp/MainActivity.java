@@ -44,11 +44,13 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
     private static final String KEY_MIN_SPEED = "min_speed";
     private static final String KEY_TIMER_LIMIT = "timer_limit";
+    private static final String KEY_SIMULATION_TOGGLE = "simulationToggle";
     private static final long CHECK_INTERVAL = 5000; // Interval in milliseconds
 
     private TextView speedTextView;
     private TextView settingsTextView;
     private ToggleButton monitoringToggleButton;
+    private ToggleButton simulationToggleButton;
     private LocationManager locationManager;
     private LocationListener locationListener;
     private SharedPreferences sharedPreferences;
@@ -75,6 +77,7 @@ public class MainActivity extends AppCompatActivity {
         speedTextView = findViewById(R.id.speedTextView);
         settingsTextView = findViewById(R.id.settingsTextView);
         monitoringToggleButton = findViewById(R.id.monitoringToggleButton);
+        simulationToggleButton = findViewById(R.id.simulationToggleButton);
 
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
@@ -84,6 +87,8 @@ public class MainActivity extends AppCompatActivity {
         updateUI(minSpeed, timerLimit);
         boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, false);
         monitoringToggleButton.setChecked(isMonitoringEnabled);
+        boolean isSimulationEnabled = sharedPreferences.getBoolean(KEY_SIMULATION_TOGGLE, false);
+        simulationToggleButton.setChecked(isSimulationEnabled);
 
         // Check if it's the first run
         boolean isFirstRun = sharedPreferences.getBoolean("IS_FIRST_RUN", true);
@@ -105,6 +110,17 @@ public class MainActivity extends AppCompatActivity {
                 startSpeedMonitorService();
             } else {
                 stopSpeedMonitorService();
+            }
+        });
+
+        simulationToggleButton.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            SharedPreferences.Editor editor = sharedPreferences.edit();
+            editor.putBoolean(KEY_SIMULATION_TOGGLE, isChecked);
+            editor.apply();
+            // Restart the service to apply the new simulation setting
+            if (monitoringToggleButton.isChecked()) {
+                stopSpeedMonitorService();
+                startSpeedMonitorService();
             }
         });
 
@@ -240,6 +256,7 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(this, SpeedMonitorService.class);
             intent.putExtra("minSpeed", minSpeed);
             intent.putExtra("timer", timerLimit * 60000L); // Convert minutes to milliseconds
+            intent.putExtra("simulation", sharedPreferences.getBoolean(KEY_SIMULATION_TOGGLE, false));
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent);
             } else {
@@ -255,6 +272,7 @@ public class MainActivity extends AppCompatActivity {
             stopService(intent);
         }
         locationManager.removeUpdates(locationListener);
+                locationManager.removeUpdates(locationListener);
         speedTextView.setText("Speed: N/A");
     }
 

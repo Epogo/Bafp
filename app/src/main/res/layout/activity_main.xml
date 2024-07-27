@@ -22,6 +22,18 @@
         android:checked="true"
         android:layout_centerInParent="true"/>
 
+    <ToggleButton
+        android:id="@+id/simulationToggleButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textOn="Simulation ON"
+        android:textOff="Simulation OFF"
+        android:checked="false"
+        android:layout_below="@id/monitoringToggleButton"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="20dp"/>
+
+
     <TextView
         android:id="@+id/settingsTextView"
         android:layout_width="wrap_content"

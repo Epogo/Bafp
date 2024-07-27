@@ -15,6 +15,7 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.MediaPlayer;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -51,6 +52,7 @@ public class SpeedMonitorService extends Service {
     private PowerManager.WakeLock wakeLock;
 
     public static boolean isRunning = false;
+    private boolean isSimulationMode = false; // Add this flag
 
     @Override
     public void onCreate() {
@@ -93,8 +95,9 @@ public class SpeedMonitorService extends Service {
 
             minSpeed = intent.getIntExtra("minSpeed", 20); // Set default to 20 km/h
             timer = intent.getLongExtra("timer", 180000); // 3 minutes in milliseconds
+            isSimulationMode = intent.getBooleanExtra("isSimulationMode", false); // Read the flag from the intent
 
-            Log.d(TAG, "Service started with minSpeed: " + minSpeed + " km/h, timer: " + timer + " ms");
+            Log.d(TAG, "Service started with minSpeed: " + minSpeed + " km/h, timer: " + timer + " ms, simulationMode: " + isSimulationMode);
 
             createNotificationChannel();
             startForeground(NOTIFICATION_ID, createNotification());
@@ -144,7 +147,35 @@ public class SpeedMonitorService extends Service {
     }
 
     private void startMonitoringSpeed() {
-        simulateTravel();
+        if (isSimulationMode) {
+            simulateTravel();
+        } else {
+            if (locationManager != null && locationListener != null) {
+                locationManager.removeUpdates(locationListener);
+            }
+
+            locationListener = new LocationListener() {
+                @Override
+                public void onLocationChanged(Location location) {
+                    handleRealLocation(location);
+                }
+
+                @Override
+                public void onStatusChanged(String provider, int status, Bundle extras) {}
+
+                @Override
+                public void onProviderEnabled(String provider) {}
+
+                @Override
+                public void onProviderDisabled(String provider) {}
+            };
+
+            try {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locationListener);
+            } catch (SecurityException e) {
+                Log.e(TAG, "Location permission not granted", e);
+            }
+        }
     }
 
     private void handleRealLocation(Location location) {
