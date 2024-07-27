@@ -256,7 +256,7 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(this, SpeedMonitorService.class);
             intent.putExtra("minSpeed", minSpeed);
             intent.putExtra("timer", timerLimit * 60000L); // Convert minutes to milliseconds
-            intent.putExtra("simulation", sharedPreferences.getBoolean(KEY_SIMULATION_TOGGLE, false));
+            intent.putExtra("isSimulationMode", sharedPreferences.getBoolean(KEY_SIMULATION_TOGGLE, false));
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent);
             } else {
