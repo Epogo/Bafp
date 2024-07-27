@@ -40,8 +40,9 @@ public class SettingsActivity extends AppCompatActivity {
         int currentMinSpeed = sharedPreferences.getInt(KEY_MIN_SPEED, 15);
         int currentTimerLimit = sharedPreferences.getInt(KEY_TIMER_LIMIT, 5);
 
-        minSpeedSeekBar.setMax(50 - 15); // Max progress is 50 - 15 = 35
-        minSpeedSeekBar.setProgress(currentMinSpeed - 15);
+        // Update minSpeedSeekBar max value
+        minSpeedSeekBar.setMax(25 - 0); // Max progress is 25 - 0 = 25
+        minSpeedSeekBar.setProgress(currentMinSpeed); // No need to adjust progress here
         minSpeedValueTextView.setText(String.valueOf(currentMinSpeed));
 
         timerLimitSeekBar.setMax(10 - 1); // Max progress is 10 - 1 = 9
@@ -51,7 +52,7 @@ public class SettingsActivity extends AppCompatActivity {
         minSpeedSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int minSpeed = progress + 15; // Convert progress back to actual speed (15 + progress)
+                int minSpeed = progress; // Use progress directly for speed (0 + progress)
                 minSpeedValueTextView.setText(String.valueOf(minSpeed));
                 saveSettings();
             }
