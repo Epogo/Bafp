@@ -29,11 +29,14 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleObserver;
+import androidx.lifecycle.OnLifecycleEvent;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements LifecycleObserver {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 2;
     private static final int SETTINGS_REQUEST_CODE = 3;
@@ -54,6 +57,8 @@ public class MainActivity extends AppCompatActivity {
     private LocationManager locationManager;
     private LocationListener locationListener;
     private SharedPreferences sharedPreferences;
+
+    private Intent speedMonitorServiceIntent;
     private int minSpeed = 15; // Default min speed in km/h
     private int timerLimit = 5; // Default timer limit in minutes
 
@@ -69,9 +74,16 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+    public void onDestroyEvent() {
+        if (!sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, false)) {
+            stopSpeedMonitorService();
+        }
+    }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getLifecycle().addObserver(this);
         setContentView(R.layout.activity_main);
 
         speedTextView = findViewById(R.id.speedTextView);
@@ -252,15 +264,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startSpeedMonitorService() {
-        if (!isServiceRunning(SpeedMonitorService.class)) {
-            Intent intent = new Intent(this, SpeedMonitorService.class);
-            intent.putExtra("minSpeed", minSpeed);
-            intent.putExtra("timer", timerLimit * 60000L); // Convert minutes to milliseconds
-            intent.putExtra("isSimulationMode", sharedPreferences.getBoolean(KEY_SIMULATION_TOGGLE, false));
+        if (!SpeedMonitorService.isRunning) {
+            speedMonitorServiceIntent = new Intent(this, SpeedMonitorService.class);
+            speedMonitorServiceIntent.putExtra("minSpeed", minSpeed);
+            speedMonitorServiceIntent.putExtra("timer", timerLimit * 60000L); // Convert minutes to milliseconds
+            speedMonitorServiceIntent.putExtra("isSimulationMode", sharedPreferences.getBoolean(KEY_SIMULATION_TOGGLE, false));
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent);
+                startForegroundService(speedMonitorServiceIntent);
             } else {
-                startService(intent);
+                startService(speedMonitorServiceIntent);
             }
         }
         startLocationUpdates();
@@ -268,11 +280,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void stopSpeedMonitorService() {
         if (SpeedMonitorService.isRunning) {
-            Intent intent = new Intent(this, SpeedMonitorService.class);
-            stopService(intent);
+            stopService(speedMonitorServiceIntent);
         }
         locationManager.removeUpdates(locationListener);
-                locationManager.removeUpdates(locationListener);
         speedTextView.setText("Speed: N/A");
     }
 
@@ -287,9 +297,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void stopAlarm() {
-        Intent intent = new Intent(this, SpeedMonitorService.class);
-        intent.setAction("STOP_ALARM");
-        startService(intent);
+        //Intent intent = new Intent(this, SpeedMonitorService.class);
+        speedMonitorServiceIntent.setAction("STOP_ALARM");
     }
 
     private void startLocationUpdates() {

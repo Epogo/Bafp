@@ -1,5 +1,7 @@
 package com.example.bafp;
 
+import static java.lang.Boolean.FALSE;
+
 import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -57,26 +59,41 @@ public class SpeedMonitorService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        isRunning = true;
         handler = new Handler(Looper.getMainLooper());
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
-
-        // Initialize WakeLock
-        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SpeedMonitorService::WakeLock");
-        try {
-            wakeLock.acquire();
-        } catch (SecurityException e) {
-            Log.e(TAG, "WakeLock permission not granted", e);
-            stopSelf();
-        }
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
+            isRunning = true;
+            if(null == handler)
+            {
+                handler = new Handler(Looper.getMainLooper());
+            }
+            if(null == locationManager)
+            {
+                locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            }
+
+            sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
+            if(null == mediaPlayer)
+            {
+                mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
+            }
+
+            // Initialize WakeLock
+            PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SpeedMonitorService::WakeLock");
+            try {
+                wakeLock.acquire();
+            } catch (SecurityException e) {
+                Log.e(TAG, "WakeLock permission not granted", e);
+                stopSelf();
+            }
             String action = intent.getAction();
             if ("STOP_SERVICE".equals(action)) {
                 stopMonitoringSpeed();
@@ -147,9 +164,12 @@ public class SpeedMonitorService extends Service {
     }
 
     private void startMonitoringSpeed() {
+        isRunning = true;
         if (isSimulationMode) {
             simulateTravel();
-        } else {
+        }
+        else
+        {
             if (locationManager != null && locationListener != null) {
                 locationManager.removeUpdates(locationListener);
             }
@@ -179,7 +199,7 @@ public class SpeedMonitorService extends Service {
     }
 
     private void handleRealLocation(Location location) {
-        if (location == null) {
+        if (!isRunning || location == null) {
             return;
         }
         double speedKmh = location.getSpeed() * 3.6;
@@ -206,7 +226,7 @@ public class SpeedMonitorService extends Service {
             Log.d(TAG, "Speed above threshold. Reset continuous time below threshold.");
         }
 
-        if (continuousTimeBelowThreshold >= timer) {
+        if (continuousTimeBelowThreshold >= 5000) { //TODO: replace with timer.
             triggerAlarm();
         }
 
@@ -234,12 +254,13 @@ public class SpeedMonitorService extends Service {
     }
 
     private void playAlarmSound() {
-        if (mediaPlayer == null) {
-            mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
+        mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
+        if (mediaPlayer != null) {
             mediaPlayer.setLooping(true);
+            mediaPlayer.start();
+            Log.d(TAG, "Alarm sound started");
         }
-        mediaPlayer.start();
-        Log.d(TAG, "Alarm sound started");
+
     }
 
     private void stopAlarmSound() {
@@ -260,7 +281,6 @@ public class SpeedMonitorService extends Service {
         showNotification("Speed monitoring in progress");
         Log.d(TAG, "Alarm state reset at " + System.currentTimeMillis());
     }
-
     private void stopMonitoringSpeed() {
         if (locationManager != null && locationListener != null) {
             locationManager.removeUpdates(locationListener);
@@ -271,6 +291,7 @@ public class SpeedMonitorService extends Service {
         }
         stopForeground(true);
         stopSelf();
+        isRunning = false;
     }
 
     private void showNotification(String contentText) {
@@ -355,14 +376,54 @@ public class SpeedMonitorService extends Service {
 
     @Override
     public void onDestroy() {
-        isRunning = false;
-        stopMonitoringSpeed();
-        stopAlarmSound();
-        if (wakeLock.isHeld()) {
-            wakeLock.release();
-        }
         super.onDestroy();
-        Log.d(TAG, "Service destroyed");
+        Log.d(TAG, "SpeedMonitorService onDestroy called");
+
+        // Release WakeLock
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+            wakeLock = null; // Nullify the reference
+            Log.d(TAG, "WakeLock released");
+        }
+
+        // Stop location updates
+        if (locationManager != null && locationListener != null) {
+            locationManager.removeUpdates(locationListener);
+            locationListener = null; // Nullify the reference
+            Log.d(TAG, "Location updates removed");
+        }
+
+        // Remove Handlers and Runnables
+        if (handler != null && checkSpeedRunnable != null) {
+            handler.removeCallbacks(checkSpeedRunnable);
+            checkSpeedRunnable = null; // Nullify the reference
+            Log.d(TAG, "Handler callbacks removed");
+        }
+
+        // Stop the foreground service
+        stopForeground(true);
+        Log.d(TAG, "Foreground service stopped");
+
+        // Stop the service
+        stopSelf();
+        isRunning = false;
+        Log.d(TAG, "Service stopped");
+        // Directly stop the service
+        stopMonitoringSpeed();
+
+        // Reset alarm state
+        isAlarmActive = false;
+        continuousTimeBelowThreshold = 0;
+        lastProcessedTime = 0;
+        stopAlarmSound();
+        Log.d(TAG, "Alarm state reset");
+
+        // Ensure media player is released
+        if (mediaPlayer != null) {
+            mediaPlayer.release();
+            mediaPlayer = null; // Nullify the reference
+            Log.d(TAG, "Media player released");
+        }
     }
 
     @Override
