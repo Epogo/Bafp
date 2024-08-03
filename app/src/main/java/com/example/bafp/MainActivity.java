@@ -50,6 +50,8 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
     private static final String KEY_SIMULATION_TOGGLE = "simulationToggle";
     private static final long CHECK_INTERVAL = 5000; // Interval in milliseconds
 
+    private static  boolean isFirstTimeTriggered = true;
+
     private TextView speedTextView;
     private TextView settingsTextView;
     private ToggleButton monitoringToggleButton;
@@ -265,7 +267,10 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
 
     private void startSpeedMonitorService() {
         if (!SpeedMonitorService.isRunning) {
-            speedMonitorServiceIntent = new Intent(this, SpeedMonitorService.class);
+            if(isFirstTimeTriggered == true){
+                speedMonitorServiceIntent = new Intent(this, SpeedMonitorService.class);
+                isFirstTimeTriggered = false;
+            }
             speedMonitorServiceIntent.putExtra("minSpeed", minSpeed);
             speedMonitorServiceIntent.putExtra("timer", timerLimit * 60000L); // Convert minutes to milliseconds
             speedMonitorServiceIntent.putExtra("isSimulationMode", sharedPreferences.getBoolean(KEY_SIMULATION_TOGGLE, false));

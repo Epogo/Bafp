@@ -55,6 +55,8 @@ public class SpeedMonitorService extends Service {
     private PowerManager.WakeLock wakeLock;
 
     public static boolean isRunning = false;
+
+    public boolean isSpecificRunning = true;
     private boolean isSimulationMode = false; // Add this flag
 
     @Override
@@ -69,6 +71,7 @@ public class SpeedMonitorService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
             String action = intent.getAction();
+            isRunning = true;
             if ("STOP_SERVICE".equals(action)) {
                 stopMonitoringSpeed();
                 return START_NOT_STICKY;
@@ -91,7 +94,7 @@ public class SpeedMonitorService extends Service {
             lastProcessedTime = 0;
 
             if (intent != null) {
-                isRunning = true;
+                isSpecificRunning = true;
                 if(null == handler)
                 {
                     handler = new Handler(Looper.getMainLooper());
@@ -168,7 +171,7 @@ public class SpeedMonitorService extends Service {
     }
 
     private void startMonitoringSpeed() {
-        isRunning = true;
+        isSpecificRunning = true;
         if (isSimulationMode) {
             simulateTravel();
         }
@@ -203,7 +206,7 @@ public class SpeedMonitorService extends Service {
     }
 
     private void handleRealLocation(Location location) {
-        if (!isRunning || location == null) {
+        if (!isSpecificRunning || location == null) {
             return;
         }
         double speedKmh = location.getSpeed() * 3.6;
@@ -290,7 +293,7 @@ public class SpeedMonitorService extends Service {
         }
         stopForeground(true);
         stopSelf();
-        isRunning = false;
+        isSpecificRunning = false;
     }
 
     private void showNotification(String contentText) {
@@ -405,6 +408,7 @@ public class SpeedMonitorService extends Service {
 
         // Stop the service
         stopSelf();
+        isSpecificRunning = false;
         isRunning = false;
         Log.d(TAG, "Service stopped");
         // Directly stop the service
