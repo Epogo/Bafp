@@ -263,7 +263,7 @@ public class SpeedMonitorService extends Service {
             Log.d(TAG, "Speed above threshold. Reset continuous time below threshold.");
         }
 
-        if (continuousTimeBelowThreshold >= 3000) { // TODO: replace with timer.
+        if (continuousTimeBelowThreshold >= timer) { // TODO: replace with timer.
             triggerAlarm();
         }
 
