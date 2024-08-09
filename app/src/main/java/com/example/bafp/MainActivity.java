@@ -271,24 +271,41 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
         }
     }
 
-
     private void startSpeedMonitorService() {
         if (!SpeedMonitorService.isRunning) {
-            if(isFirstTimeTriggered == true){
+            // Initialize Intent only once
+            if (isFirstTimeTriggered) {
+                speedMonitorServiceIntent = new Intent(this, SpeedMonitorService.class);
+                isFirstTimeTriggered = false;  // Set to false to avoid re-initialization
+            }
+            else if(null == speedMonitorServiceIntent)
+            {
+                //If the main activity has been reactivated.
                 speedMonitorServiceIntent = new Intent(this, SpeedMonitorService.class);
                 isFirstTimeTriggered = false;
             }
-            speedMonitorServiceIntent.putExtra("minSpeed", minSpeed);
-            speedMonitorServiceIntent.putExtra("timer", timerLimit * 60000L); // Convert minutes to milliseconds
-            speedMonitorServiceIntent.putExtra("isSimulationMode", sharedPreferences.getBoolean(KEY_SIMULATION_TOGGLE, false));
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(speedMonitorServiceIntent);
+
+            // Ensure Intent is not null before using it
+            if (speedMonitorServiceIntent != null) {
+                speedMonitorServiceIntent.putExtra("minSpeed", minSpeed);
+                speedMonitorServiceIntent.putExtra("timer", timerLimit * 60000L); // Convert minutes to milliseconds
+                speedMonitorServiceIntent.putExtra("isSimulationMode", sharedPreferences.getBoolean(KEY_SIMULATION_TOGGLE, false));
+
+                // Start service depending on the Android version
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(speedMonitorServiceIntent);
+                } else {
+                    startService(speedMonitorServiceIntent);
+                }
             } else {
-                startService(speedMonitorServiceIntent);
+                Log.e("MainActivity", "Failed to start SpeedMonitorService. Intent is null.");
             }
         }
+
+        // Start location updates regardless of service state
         startLocationUpdates();
     }
+
 
     private void stopSpeedMonitorService() {
         if(null != speedMonitorServiceIntent) {

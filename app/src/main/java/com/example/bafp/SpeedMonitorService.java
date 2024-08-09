@@ -70,75 +70,93 @@ public class SpeedMonitorService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-            String action = intent.getAction();
-            isRunning = true;
-            sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-            isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
-            if ("STOP_SERVICE".equals(action)) {
-                stopMonitoringSpeed();
-                return START_NOT_STICKY;
-            } else if ("STOP_ALARM".equals(action)) {
-                resetAlarmState();
-                if (checkLocationPermission() && checkNotificationPermission()) {
-                    if (isMonitoringEnabled) {
-                        startMonitoringSpeed();
-                    }
-                    else
-                    {
-                        stopSelf();
-                    }
-                }
-                else {
-                    stopSelf();
-                }
-                return START_STICKY;
-            }
+        // Ensure the intent is not null before accessing its data
+        if (intent == null) {
+            Log.w(TAG, "Received null intent, stopping service.");
+            stopSelf();
+            return START_NOT_STICKY;
+        }
 
-            minSpeed = intent.getIntExtra("minSpeed", 20); // Set default to 20 km/h
-            timer = intent.getLongExtra("timer", 180000); // 3 minutes in milliseconds
-            isSimulationMode = intent.getBooleanExtra("isSimulationMode", false); // Read the flag from the intent
-            continuousTimeBelowThreshold = 0;
-            lastProcessedTime = 0;
+        String action = intent.getAction();
+        isRunning = true;
+        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
 
-            if (intent != null) {
-                isSpecificRunning = true;
-                if(null == handler)
-                {
-                    handler = new Handler(Looper.getMainLooper());
-                }
-                if(null == locationManager)
-                {
-                    locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-                }
+        // Handle the "STOP_SERVICE" action
+        if ("STOP_SERVICE".equals(action)) {
+            stopMonitoringSpeed();
+            stopSelf(); // Explicitly stop the service
+            return START_NOT_STICKY;
+        }
 
-                if(null == mediaPlayer)
-                {
-                    mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
-                }
-
-                // Initialize WakeLock
-                PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
-                wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SpeedMonitorService::WakeLock");
-                try {
-                    wakeLock.acquire();
-                } catch (SecurityException e) {
-                    Log.e(TAG, "WakeLock permission not granted", e);
-                    stopSelf();
-                }
-
-                Log.d(TAG, "Service started with minSpeed: " + minSpeed + " km/h, timer: " + timer + " ms, simulationMode: " + isSimulationMode);
-
-                createNotificationChannel();
-                startForeground(NOTIFICATION_ID, createNotification());
-
-                if (checkLocationPermission() && checkNotificationPermission()) {
-                    if (isMonitoringEnabled) {
-                        startMonitoringSpeed();
-                    }
+        // Handle the "STOP_ALARM" action
+        else if ("STOP_ALARM".equals(action)) {
+            resetAlarmState();
+            if (checkLocationPermission() && checkNotificationPermission()) {
+                if (isMonitoringEnabled) {
+                    startMonitoringSpeed();
                 } else {
                     stopSelf();
                 }
+            } else {
+                stopSelf();
             }
+            return START_STICKY;
+        }
+
+        // Read configuration parameters from the intent
+        minSpeed = intent.getIntExtra("minSpeed", 20); // Default to 20 km/h
+        timer = intent.getLongExtra("timer", 180000); // 3 minutes in milliseconds
+        isSimulationMode = intent.getBooleanExtra("isSimulationMode", false); // Read the simulation mode flag
+        continuousTimeBelowThreshold = 0;
+        lastProcessedTime = 0;
+
+        isSpecificRunning = true;
+
+        // Initialize the Handler if it's null
+        if (handler == null) {
+            handler = new Handler(Looper.getMainLooper());
+        }
+
+        // Initialize the LocationManager if it's null
+        if (locationManager == null) {
+            locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        }
+
+        // Initialize the MediaPlayer if it's null
+        if (mediaPlayer == null) {
+            mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
+        }
+
+        // Initialize and acquire the WakeLock
+        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (wakeLock == null) {
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SpeedMonitorService::WakeLock");
+        }
+        try {
+            wakeLock.acquire();
+        } catch (SecurityException e) {
+            Log.e(TAG, "WakeLock permission not granted", e);
+            stopSelf(); // Stop the service if WakeLock acquisition fails
+            return START_NOT_STICKY;
+        }
+
+        Log.d(TAG, "Service started with minSpeed: " + minSpeed + " km/h, timer: " + timer + " ms, simulationMode: " + isSimulationMode);
+
+        // Create a notification channel if it hasn't been created already
+        createNotificationChannel();
+        startForeground(NOTIFICATION_ID, createNotification());
+
+        // Check permissions before starting monitoring
+        if (checkLocationPermission() && checkNotificationPermission()) {
+            if (isMonitoringEnabled) {
+                startMonitoringSpeed();
+            } else {
+                stopSelf(); // Stop the service if monitoring is not enabled
+            }
+        } else {
+            stopSelf(); // Stop the service if permissions are not granted
+        }
 
         return START_STICKY;
     }
@@ -211,6 +229,13 @@ public class SpeedMonitorService extends Service {
     }
 
     private void handleRealLocation(Location location) {
+        isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
+        if(!isMonitoringEnabled)
+        {
+            stopSelf();
+            return;
+        }
+
         if (!isSpecificRunning || location == null) {
             return;
         }
