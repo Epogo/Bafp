@@ -72,6 +72,8 @@ public class SpeedMonitorService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
             String action = intent.getAction();
             isRunning = true;
+            sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
             if ("STOP_SERVICE".equals(action)) {
                 stopMonitoringSpeed();
                 return START_NOT_STICKY;
@@ -81,7 +83,12 @@ public class SpeedMonitorService extends Service {
                     if (isMonitoringEnabled) {
                         startMonitoringSpeed();
                     }
-                } else {
+                    else
+                    {
+                        stopSelf();
+                    }
+                }
+                else {
                     stopSelf();
                 }
                 return START_STICKY;
@@ -104,8 +111,6 @@ public class SpeedMonitorService extends Service {
                     locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
                 }
 
-                sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-                isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
                 if(null == mediaPlayer)
                 {
                     mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
@@ -233,7 +238,7 @@ public class SpeedMonitorService extends Service {
             Log.d(TAG, "Speed above threshold. Reset continuous time below threshold.");
         }
 
-        if (continuousTimeBelowThreshold >= 5000) { //TODO: replace with timer.
+        if (continuousTimeBelowThreshold >= 3000) { //TODO: replace with timer.
             triggerAlarm();
         }
 
@@ -303,11 +308,6 @@ public class SpeedMonitorService extends Service {
                 .setSmallIcon(R.drawable.ic_notification)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true);
-
-        Intent stopAlarmIntent = new Intent(this, SpeedMonitorService.class);
-        stopAlarmIntent.setAction("STOP_ALARM");
-        PendingIntent pendingIntent = PendingIntent.getService(this, 0, stopAlarmIntent, PendingIntent.FLAG_UPDATE_CURRENT);
-        builder.addAction(R.drawable.ic_stop, "Stop Alarm", pendingIntent);
 
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (notificationManager != null) {

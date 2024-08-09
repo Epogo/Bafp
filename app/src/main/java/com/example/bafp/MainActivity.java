@@ -249,11 +249,17 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
         int id = item.getItemId();
 
         if (id == R.id.action_settings) {
-            Intent intent = new Intent(this, SettingsActivity.class);
-            intent.putExtra("MIN_SPEED", minSpeed);
-            intent.putExtra("TIMER_LIMIT", timerLimit);
-            startActivityForResult(intent, SETTINGS_REQUEST_CODE);
-            return true;
+            boolean isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, false);
+            if (isMonitoringEnabled) {
+                Toast.makeText(this, "Cannot access settings while monitoring is active.", Toast.LENGTH_SHORT).show();
+                return true; // Prevent settings from opening
+            } else {
+                Intent intent = new Intent(this, SettingsActivity.class);
+                intent.putExtra("MIN_SPEED", minSpeed);
+                intent.putExtra("TIMER_LIMIT", timerLimit);
+                startActivityForResult(intent, SETTINGS_REQUEST_CODE);
+                return true;
+            }
         } else if (id == R.id.action_tutorial) {
             Toast.makeText(this, "Tutorial clicked", Toast.LENGTH_SHORT).show();
             return true;
@@ -264,6 +270,7 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
             return super.onOptionsItemSelected(item);
         }
     }
+
 
     private void startSpeedMonitorService() {
         if (!SpeedMonitorService.isRunning) {
@@ -284,21 +291,13 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
     }
 
     private void stopSpeedMonitorService() {
-        if (SpeedMonitorService.isRunning) {
-            stopService(speedMonitorServiceIntent);
+        if(null != speedMonitorServiceIntent) {
+            if (SpeedMonitorService.isRunning) {
+                stopService(speedMonitorServiceIntent);
+            }
         }
         locationManager.removeUpdates(locationListener);
         speedTextView.setText("Speed: N/A");
-    }
-
-    private boolean isServiceRunning(Class<?> serviceClass) {
-        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-        for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
-            if (serviceClass.getName().equals(service.service.getClassName())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void stopAlarm() {
