@@ -6,6 +6,7 @@ import android.Manifest;
 import android.app.ActivityManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -35,6 +36,7 @@ public class SpeedMonitorService extends Service {
     private static final int NOTIFICATION_ID = 1;
     private static final String PREFS_NAME = "com.example.bafp.PREFS";
     private static final String KEY_MONITORING_TOGGLE = "monitoringToggle";
+    private static final long ALARM_TIMEOUT_MS = 45000; // 45 seconds
 
     private LocationManager locationManager;
     private boolean notificationsEnabled = false;
@@ -45,6 +47,7 @@ public class SpeedMonitorService extends Service {
     private MediaPlayer mediaPlayer;
     private Handler handler;
     private Runnable checkSpeedRunnable;
+    private Runnable alarmTimeoutRunnable;
 
     private long continuousTimeBelowThreshold = 0;
     private long lastProcessedTime = 0;
@@ -197,9 +200,7 @@ public class SpeedMonitorService extends Service {
         isSpecificRunning = true;
         if (isSimulationMode) {
             simulateTravel();
-        }
-        else
-        {
+        } else {
             if (locationManager != null && locationListener != null) {
                 locationManager.removeUpdates(locationListener);
             }
@@ -230,8 +231,7 @@ public class SpeedMonitorService extends Service {
 
     private void handleRealLocation(Location location) {
         isMonitoringEnabled = sharedPreferences.getBoolean(KEY_MONITORING_TOGGLE, true);
-        if(!isMonitoringEnabled)
-        {
+        if (!isMonitoringEnabled) {
             stopSelf();
             return;
         }
@@ -263,7 +263,7 @@ public class SpeedMonitorService extends Service {
             Log.d(TAG, "Speed above threshold. Reset continuous time below threshold.");
         }
 
-        if (continuousTimeBelowThreshold >= 3000) { //TODO: replace with timer.
+        if (continuousTimeBelowThreshold >= 3000) { // TODO: replace with timer.
             triggerAlarm();
         }
 
@@ -283,6 +283,9 @@ public class SpeedMonitorService extends Service {
 
         showNotification("Speed below threshold for too long!");
         playAlarmSound();
+
+        // Start the timeout runnable
+        startAlarmTimeout();
     }
 
     private void playAlarmSound() {
@@ -292,7 +295,6 @@ public class SpeedMonitorService extends Service {
             mediaPlayer.start();
             Log.d(TAG, "Alarm sound started");
         }
-
     }
 
     private void stopAlarmSound() {
@@ -304,7 +306,6 @@ public class SpeedMonitorService extends Service {
         }
     }
 
-    // Update resetAlarmState to log when alarm is reset
     private void resetAlarmState() {
         isAlarmActive = false;
         continuousTimeBelowThreshold = 0;
@@ -312,7 +313,11 @@ public class SpeedMonitorService extends Service {
         stopAlarmSound();
         showNotification("Speed monitoring in progress");
         Log.d(TAG, "Alarm state reset at " + System.currentTimeMillis());
+
+        // Stop the timeout runnable
+        stopAlarmTimeout();
     }
+
     private void stopMonitoringSpeed() {
         if (locationManager != null && locationListener != null) {
             locationManager.removeUpdates(locationListener);
@@ -401,6 +406,34 @@ public class SpeedMonitorService extends Service {
         });
     }
 
+    private void startAlarmTimeout() {
+        if (alarmTimeoutRunnable != null) {
+            handler.removeCallbacks(alarmTimeoutRunnable);
+        }
+
+        alarmTimeoutRunnable = new Runnable() {
+            @Override
+            public void run() {
+                Log.d(TAG, "Alarm timeout reached. Stopping alarm and restarting monitoring.");
+                resetAlarmState();
+                if (isMonitoringEnabled) {
+                    startMonitoringSpeed();
+                } else {
+                    stopSelf();
+                }
+            }
+        };
+
+        handler.postDelayed(alarmTimeoutRunnable, ALARM_TIMEOUT_MS);
+    }
+
+    private void stopAlarmTimeout() {
+        if (alarmTimeoutRunnable != null) {
+            handler.removeCallbacks(alarmTimeoutRunnable);
+            alarmTimeoutRunnable = null;
+        }
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
@@ -426,6 +459,9 @@ public class SpeedMonitorService extends Service {
             checkSpeedRunnable = null; // Nullify the reference
             Log.d(TAG, "Handler callbacks removed");
         }
+
+        // Remove Alarm Timeout Runnable
+        stopAlarmTimeout();
 
         // Stop the foreground service
         stopForeground(true);
@@ -453,6 +489,7 @@ public class SpeedMonitorService extends Service {
             Log.d(TAG, "Media player released");
         }
     }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
