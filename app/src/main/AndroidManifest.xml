@@ -53,6 +53,12 @@
 
         <activity android:name=".SettingsActivity"
             android:exported="false" />
+
+        <activity android:name=".TutorialActivity"
+            android:exported="false" />
+
+        <activity android:name=".AboutActivity" />
+
         <activity
             android:name=".PopUpAlertActivity"
             android:theme="@style/Theme.AppCompat.Dialog"

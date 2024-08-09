@@ -261,10 +261,12 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
                 return true;
             }
         } else if (id == R.id.action_tutorial) {
-            Toast.makeText(this, "Tutorial clicked", Toast.LENGTH_SHORT).show();
+            Intent intent = new Intent(this, TutorialActivity.class);
+            startActivity(intent);
             return true;
         } else if (id == R.id.action_about) {
-            Toast.makeText(this, "About clicked", Toast.LENGTH_SHORT).show();
+            Intent intent = new Intent(this, AboutActivity.class);
+            startActivity(intent);
             return true;
         } else {
             return super.onOptionsItemSelected(item);
