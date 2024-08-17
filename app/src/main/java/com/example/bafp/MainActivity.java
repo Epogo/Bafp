@@ -319,9 +319,14 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
         speedTextView.setText("Speed: N/A");
     }
 
-    private void stopAlarm() {
-        //Intent intent = new Intent(this, SpeedMonitorService.class);
-        speedMonitorServiceIntent.setAction("STOP_ALARM");
+    private void stopAlarm(Intent intent) {
+        if (intent != null) {
+            intent.setAction("STOP_ALARM_ACTION");
+            stopService(intent);
+        } else {
+            Log.e("MainActivity", "stopAlarm called with a null Intent");
+            // Handle the null case as needed
+        }
     }
 
     private void startLocationUpdates() {
@@ -349,7 +354,7 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
             updateUI(minSpeed, timerLimit);
 
             // Stop the alarm and restart the service with new settings
-            stopAlarm();
+            stopAlarm(speedMonitorServiceIntent);  // Ensure stopAlarm is handling any nulls or missing intents internally
             if (monitoringToggleButton.isChecked()) {
                 startSpeedMonitorService();
             }
@@ -363,6 +368,7 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
             }
         }
     }
+
 
     private void updateUI(int minSpeed, int timerLimit) {
         settingsTextView.setText(String.format("Minimum Speed: %d km/h\nTimer Limit: %d minutes", minSpeed, timerLimit));
@@ -425,7 +431,7 @@ public class MainActivity extends AppCompatActivity implements LifecycleObserver
     }
 
     public void onPopUpAlertDismissed() {
-        stopAlarm();
+        stopAlarm(speedMonitorServiceIntent);
         if (monitoringToggleButton.isChecked()) {
             startSpeedMonitorService();
         }
